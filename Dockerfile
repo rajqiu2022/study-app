@@ -1,0 +1,39 @@
+# ===== 阶段1: 构建前端 =====
+FROM node:18-alpine AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --registry=https://registry.npmmirror.com
+COPY frontend/ ./
+RUN npm run build
+
+# ===== 阶段2: 运行环境 =====
+FROM python:3.11-slim
+WORKDIR /app
+
+# 安装 nginx
+RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 复制后端代码
+COPY backend/ ./backend/
+
+# 复制前端构建产物到 nginx
+COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+
+# nginx 配置（删除默认站点，避免冲突）
+RUN rm -f /etc/nginx/sites-enabled/default
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# 创建数据目录和上传目录
+RUN mkdir -p /app/backend/data /app/backend/uploads
+
+# 启动脚本
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+EXPOSE 80
+
+CMD ["/app/start.sh"]

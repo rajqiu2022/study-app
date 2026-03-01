@@ -1,0 +1,137 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #eff6ff 100%);
+  min-height: 100vh;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c4b5fd; border-radius: 3px; }
+
+/* 页面过渡 */
+.page-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 卡片悬浮效果 */
+.hover-card { transition: all 0.3s ease; cursor: pointer; }
+.hover-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(99, 102, 241, 0.15); }
+
+/* 统计卡片 */
+.stat-card { background: white; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+.stat-card .stat-value { font-size: 32px; font-weight: 700; color: #6366f1; }
+.stat-card .stat-label { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+/* 聊天头像 */
+.chat-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.chat-avatar-bot { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+.chat-avatar-user { background: #e0e7ff; }
+
+/* 聊天气泡 */
+.chat-bubble-user {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white; border-radius: 16px 16px 4px 16px;
+  padding: 12px 16px; max-width: 75%; margin-left: auto; word-break: break-word;
+}
+.chat-bubble-bot {
+  background: white; color: #1f2937; border-radius: 16px 16px 16px 4px;
+  padding: 12px 16px; max-width: 75%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); word-break: break-word; white-space: pre-line;
+}
+
+/* 聊天输入栏 */
+.chat-input-bar {
+  display: flex; gap: 8px; margin-top: 12px; align-items: flex-end;
+}
+
+/* 掌握度标签颜色 */
+.mastery-1 { color: #ef4444; }
+.mastery-2 { color: #f97316; }
+.mastery-3 { color: #eab308; }
+.mastery-4 { color: #22c55e; }
+.mastery-5 { color: #6366f1; }
+
+/* ========== 移动端布局 ========== */
+.mobile-layout {
+  display: flex; flex-direction: column; height: 100vh;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #eff6ff 100%);
+}
+
+.mobile-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.mobile-content {
+  flex: 1; overflow: auto; padding: 12px;
+  padding-bottom: 70px; /* 给底部tab留空间 */
+}
+.mobile-content .page-container {
+  padding: 0; max-width: 100%;
+}
+
+/* 移动端底部Tab栏 */
+.mobile-tab-bar {
+  display: flex; justify-content: space-around; align-items: center;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 6px 0;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.mobile-tab-item {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 4px 12px; cursor: pointer;
+  color: #9ca3af; transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-tab-item.active {
+  color: #6366f1;
+}
+.mobile-tab-icon { font-size: 20px; line-height: 1; }
+.mobile-tab-label { font-size: 10px; margin-top: 2px; }
+
+/* ========== 移动端响应式 ========== */
+@media (max-width: 768px) {
+  .stat-card { padding: 12px; }
+  .stat-card .stat-value { font-size: 24px; }
+
+  .chat-bubble-user, .chat-bubble-bot { max-width: 85%; padding: 10px 14px; font-size: 14px; }
+  .chat-avatar { width: 30px; height: 30px; }
+  .chat-avatar .anticon { font-size: 14px !important; }
+
+  .chat-title { font-size: 18px !important; margin-bottom: 8px !important; }
+
+  .chat-input-bar { margin-top: 8px; }
+
+  /* antd 表格移动端 */
+  .ant-table { font-size: 13px; }
+
+  /* 弹窗移动端全屏 */
+  .ant-modal { max-width: calc(100vw - 32px); }
+}
