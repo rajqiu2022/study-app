@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Tag,
-  Space, Popconfirm, message, Typography, Segmented, Badge, Tooltip,
+  Space, Popconfirm, message, Typography, Segmented, Badge, Tooltip, Image,
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -77,7 +77,15 @@ export default function WrongQuestions() {
 
   const columns = [
     { title: '学科', dataIndex: 'subject_id', width: 80, render: (id) => subjectName(id) },
-    { title: '题目内容', dataIndex: 'question_content', ellipsis: true },
+    {
+      title: '题目内容', dataIndex: 'question_content', ellipsis: true,
+      render: (text, r) => (
+        <Space>
+          {r.image_url && <Image src={r.image_url} width={32} height={32} style={{ borderRadius: 4, objectFit: 'cover' }} preview={{ mask: '🖼️' }} />}
+          <span>{text}</span>
+        </Space>
+      ),
+    },
     { title: '知识点', dataIndex: 'knowledge_point', width: 120, ellipsis: true },
     {
       title: '错误类型', dataIndex: 'error_type', width: 100,
@@ -186,6 +194,12 @@ export default function WrongQuestions() {
       }>
         {detail && (
           <div>
+            {detail.image_url && (
+              <div style={{ textAlign: 'center', marginBottom: 16, background: '#f5f5f5', borderRadius: 12, padding: 12 }}>
+                <Image src={detail.image_url} style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8 }} />
+                <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>📷 题目原图</div>
+              </div>
+            )}
             <Paragraph><strong>学科：</strong>{subjectName(detail.subject_id)}</Paragraph>
             <Paragraph><strong>题目：</strong>{detail.question_content}</Paragraph>
             <Paragraph><strong>知识点：</strong>{detail.knowledge_point || '未标注'}</Paragraph>

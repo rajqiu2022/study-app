@@ -83,6 +83,7 @@ class LearningRecordOut(BaseModel):
     mastery_level: int
     is_important: bool
     notes: str
+    image_url: Optional[str] = ""
     class Config:
         from_attributes = True
 
@@ -125,6 +126,7 @@ class WrongQuestionOut(BaseModel):
     review_count: int
     last_reviewed: Optional[date]
     is_resolved: bool
+    image_url: Optional[str] = ""
     class Config:
         from_attributes = True
 

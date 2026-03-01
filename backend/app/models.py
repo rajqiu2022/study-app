@@ -57,6 +57,7 @@ class LearningRecord(Base):
     mastery_level = Column(Integer, default=3)  # 1=未掌握 2=需加强 3=一般 4=熟练 5=精通
     is_important = Column(Boolean, default=False)
     notes = Column(Text, default="")
+    image_url = Column(String(500), default="")  # 学习内容原图URL
 
     user = relationship("User", back_populates="learning_records")
     subject = relationship("Subject")
@@ -78,6 +79,7 @@ class WrongQuestion(Base):
     review_count = Column(Integer, default=0)
     last_reviewed = Column(Date, nullable=True)
     is_resolved = Column(Boolean, default=False)
+    image_url = Column(String(500), default="")  # 题目原图URL
 
     user = relationship("User", back_populates="wrong_questions")
     subject = relationship("Subject")

@@ -302,6 +302,7 @@ async def recognize_and_save(
                 my_answer=f"[图片] {image_url}" if image_url else "",
                 analysis=error_analysis,
                 mistake_date=date.today(),
+                image_url=image_url,
             )
             db.add(wq)
             db.commit()
@@ -346,6 +347,7 @@ async def recognize_and_save(
                 study_date=date.today(),
                 mastery_level=mastery,
                 notes="\n".join(notes_parts),
+                image_url=image_url,
             )
             db.add(record)
             db.commit()
@@ -389,6 +391,7 @@ async def recognize_and_save(
                 question_content=full_content,
                 my_answer=f"[图片] {image_url}" if image_url else "",
                 mistake_date=date.today(),
+                image_url=image_url,
             )
             db.add(wq)
             db.commit()
@@ -403,6 +406,7 @@ async def recognize_and_save(
                 knowledge_point=knowledge_point or full_content[:50],
                 study_date=date.today(), mastery_level=2,
                 notes=f"{full_content}\n{image_url}" if image_url else full_content,
+                image_url=image_url,
             )
             db.add(record)
             db.commit()

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Switch,
-  Tag, Space, Popconfirm, message, Typography, Segmented,
+  Tag, Space, Popconfirm, message, Typography, Segmented, Image,
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -95,7 +95,14 @@ export default function LearningRecords() {
       title: '学科', dataIndex: 'subject_id', width: 80,
       render: (id) => subjectName(id),
     },
-    { title: '知识点', dataIndex: 'knowledge_point', ellipsis: true },
+    { title: '知识点', dataIndex: 'knowledge_point', ellipsis: true,
+      render: (text, r) => (
+        <Space>
+          {r.image_url && <Image src={r.image_url} width={32} height={32} style={{ borderRadius: 4, objectFit: 'cover' }} preview={{ mask: '🖼️' }} />}
+          <span>{text}</span>
+        </Space>
+      ),
+    },
     { title: '日期', dataIndex: 'study_date', width: 110 },
     { title: '时长(分)', dataIndex: 'duration_minutes', width: 80 },
     {

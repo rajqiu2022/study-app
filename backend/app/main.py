@@ -23,6 +23,18 @@ def _migrate_db():
             conn.commit()
         except Exception:
             pass
+        # wrong_questions 表添加 image_url 字段
+        try:
+            conn.execute(sqlalchemy.text("ALTER TABLE wrong_questions ADD COLUMN image_url VARCHAR(500) DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass
+        # learning_records 表添加 image_url 字段
+        try:
+            conn.execute(sqlalchemy.text("ALTER TABLE learning_records ADD COLUMN image_url VARCHAR(500) DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass
 
 _migrate_db()
 
