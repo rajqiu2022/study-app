@@ -67,6 +67,8 @@ export const deleteWrongQuestion = (id) => api.delete(`/wrong-questions/${id}`)
 // ---- 智能练习 ----
 export const generatePractice = (data) => api.post('/practice/generate', { ...data, user_id: uid() }, { timeout: 120000 })
 export const submitPractice = (sessionId, answers) => api.post(`/practice/${sessionId}/submit`, { answers })
+export const abandonPractice = (sessionId) => api.post(`/practice/${sessionId}/abandon`)
+export const getPracticeSession = (sessionId) => api.get(`/practice/${sessionId}`)
 export const getPracticeSessions = () => api.get('/practice/', { params: { user_id: uid() } })
 
 // ---- AI对话 ----

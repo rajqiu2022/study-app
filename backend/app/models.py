@@ -106,9 +106,11 @@ class PracticeSession(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     subject_id = Column(String(36), ForeignKey("subjects.id"), nullable=False)
     knowledge_point = Column(Text, default="")
-    question_type = Column(String(20), default="混合")  # 选择题/填空题/应用题/混合
+    question_type = Column(String(20), default="混合")  # 选择题/填空题/应用题/混合/AI出题
+    practice_mode = Column(String(20), default="custom")  # wrong_review/important_review/custom
     total_questions = Column(Integer, default=0)
     correct_count = Column(Integer, default=0)
+    status = Column(String(20), default="generating")  # generating/practicing/completed/abandoned
     questions_json = Column(Text, default="[]")  # JSON存储题目和答案
     created_at = Column(DateTime, default=datetime.now)
 

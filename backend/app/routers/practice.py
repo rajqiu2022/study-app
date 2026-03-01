@@ -489,9 +489,58 @@ def generate_questions(subject_id: str, knowledge_point: str, count: int, diffic
 async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(get_db)):
     use_ai = False
     questions = None
+    practice_mode = data.practice_mode or "custom"
 
     # 检查是否启用了全局大模型配置（自动同步iFlow）
     llm_config = get_llm_config_with_iflow(db)
+
+    # 根据练习模式准备知识点和上下文
+    extra_context_for_prompt = ""
+    auto_knowledge_point = data.knowledge_point or ""
+
+    if practice_mode == "wrong_review":
+        # 错题练习：从错题本中提取题目作为出题依据
+        wrong_qs_raw = (
+            db.query(WrongQuestion)
+            .filter(WrongQuestion.user_id == data.user_id, WrongQuestion.is_resolved == False)
+            .order_by(WrongQuestion.mistake_date.desc())
+            .limit(20)
+            .all()
+        )
+        if data.subject_id:
+            wrong_qs_raw = [wq for wq in wrong_qs_raw if wq.subject_id == data.subject_id]
+        if wrong_qs_raw:
+            wrong_points = list(set(wq.knowledge_point for wq in wrong_qs_raw if wq.knowledge_point))
+            auto_knowledge_point = auto_knowledge_point or "、".join(wrong_points[:5])
+            wrong_details = []
+            for wq in wrong_qs_raw[:10]:
+                wrong_details.append(f"- 知识点：{wq.knowledge_point}，题目：{wq.question_content[:60]}，正确答案：{wq.correct_answer or '未知'}")
+            extra_context_for_prompt = f"\n\n【错题练习模式】请根据以下学生做错的题目，出相似的变式题来帮助巩固：\n" + "\n".join(wrong_details)
+
+    elif practice_mode == "important_review":
+        # 重点知识练习：从学习记录中提取重点/薄弱知识点
+        records = (
+            db.query(LearningRecord)
+            .filter(LearningRecord.user_id == data.user_id)
+            .order_by(LearningRecord.study_date.desc())
+            .limit(30)
+            .all()
+        )
+        if data.subject_id:
+            records = [r for r in records if r.subject_id == data.subject_id]
+        # 优先选重要+薄弱的
+        important = [r for r in records if r.is_important or r.mastery_level <= 2]
+        if not important:
+            important = records[:10]
+        if important:
+            kp_list = list(set(r.knowledge_point for r in important if r.knowledge_point))
+            auto_knowledge_point = auto_knowledge_point or "、".join(kp_list[:5])
+            kp_details = []
+            for r in important[:10]:
+                mastery_text = {1: "未掌握", 2: "需加强", 3: "一般", 4: "熟练", 5: "精通"}
+                kp_details.append(f"- {r.knowledge_point}（掌握度：{mastery_text.get(r.mastery_level, '一般')}，{'⭐重点' if r.is_important else ''}）")
+            extra_context_for_prompt = f"\n\n【重点知识练习模式】请根据以下学生的重点/薄弱知识点出题来巩固复习：\n" + "\n".join(kp_details)
+
     if llm_config and llm_config.api_url and llm_config.model_name:
         # 获取用户年级
         user = db.query(User).filter(User.id == data.user_id).first()
@@ -505,7 +554,7 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
         )
         weak_points = list(set(r.knowledge_point for r in weak_records if r.knowledge_point))
 
-        wrong_qs_raw = (
+        wrong_qs_raw_all = (
             db.query(WrongQuestion)
             .filter(WrongQuestion.user_id == data.user_id, WrongQuestion.is_resolved == False)
             .order_by(WrongQuestion.mistake_date.desc())
@@ -515,7 +564,7 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
         wrong_qs = [
             {"knowledge_point": wq.knowledge_point, "question": wq.question_content[:80],
              "correct_answer": wq.correct_answer or ""}
-            for wq in wrong_qs_raw if wq.knowledge_point
+            for wq in wrong_qs_raw_all if wq.knowledge_point
         ]
 
         # 如果有学科过滤
@@ -527,7 +576,7 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
             wrong_qs_filtered = [
                 {"knowledge_point": wq.knowledge_point, "question": wq.question_content[:80],
                  "correct_answer": wq.correct_answer or ""}
-                for wq in wrong_qs_raw
+                for wq in wrong_qs_raw_all
                 if wq.knowledge_point and wq.subject_id == data.subject_id
             ]
             if weak_points_filtered or wrong_qs_filtered:
@@ -536,12 +585,16 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
 
         prompt = build_practice_prompt(
             subject_id=data.subject_id or "math",
-            knowledge_point=data.knowledge_point or "",
+            knowledge_point=auto_knowledge_point,
             count=data.total_questions or 5,
             grade=grade,
             weak_points=weak_points,
             wrong_questions=wrong_qs,
         )
+        # 追加练习模式的额外上下文
+        if extra_context_for_prompt:
+            prompt += extra_context_for_prompt
+
         try:
             llm_response = await call_llm(
                 provider=llm_config.provider,
@@ -563,15 +616,17 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
     if not questions:
         questions = generate_questions(
             subject_id=data.subject_id or "math",
-            knowledge_point=data.knowledge_point or "",
+            knowledge_point=auto_knowledge_point,
             count=data.total_questions or 5,
         )
     session = PracticeSession(
         user_id=data.user_id,
         subject_id=data.subject_id,
-        knowledge_point=data.knowledge_point or "",
+        knowledge_point=auto_knowledge_point,
         question_type=("AI出题" if use_ai else "本地题库"),
+        practice_mode=practice_mode,
         total_questions=len(questions),
+        status="practicing",
         questions_json=json.dumps(questions, ensure_ascii=False),
     )
     db.add(session)
@@ -614,6 +669,7 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
                 wrong_list.append(q)
 
     session.correct_count = correct
+    session.status = "completed"
     session.questions_json = json.dumps(questions, ensure_ascii=False)
 
     # 将做错的题目自动记录到错题本
@@ -638,3 +694,23 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
         "details": questions,
         "wrong_added": len(wrong_list),
     }
+
+
+@router.post("/{session_id}/abandon")
+def abandon_session(session_id: str, db: Session = Depends(get_db)):
+    """废弃练习"""
+    session = db.query(PracticeSession).filter(PracticeSession.id == session_id).first()
+    if not session:
+        raise HTTPException(404, "练习不存在")
+    session.status = "abandoned"
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/{session_id}", response_model=PracticeSessionOut)
+def get_session(session_id: str, db: Session = Depends(get_db)):
+    """获取单个练习详情"""
+    session = db.query(PracticeSession).filter(PracticeSession.id == session_id).first()
+    if not session:
+        raise HTTPException(404, "练习不存在")
+    return session

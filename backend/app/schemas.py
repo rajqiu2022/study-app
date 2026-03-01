@@ -137,6 +137,7 @@ class PracticeSessionCreate(BaseModel):
     subject_id: str
     knowledge_point: Optional[str] = ""
     question_type: Optional[str] = "混合"
+    practice_mode: Optional[str] = "custom"  # wrong_review/important_review/custom
     total_questions: Optional[int] = 5
 
 class PracticeSessionOut(BaseModel):
@@ -145,8 +146,10 @@ class PracticeSessionOut(BaseModel):
     subject_id: str
     knowledge_point: str
     question_type: str
+    practice_mode: Optional[str] = "custom"
     total_questions: int
     correct_count: int
+    status: Optional[str] = "generating"
     questions_json: str
     created_at: datetime
     class Config:

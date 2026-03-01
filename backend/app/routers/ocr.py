@@ -18,8 +18,8 @@ UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-async def ai_ocr(image_path: str, llm_config) -> str:
-    """使用 AI 大模型的视觉能力识别图片内容"""
+async def ai_ocr(image_path: str, llm_config) -> dict:
+    """使用 AI 大模型的视觉能力识别图片内容，同时识别学科"""
     import httpx
 
     # 读取图片并转为 base64
@@ -72,7 +72,8 @@ async def ai_ocr(image_path: str, llm_config) -> str:
                         "type": "text",
                         "text": "请仔细识别这张图片中的所有文字内容，包括题目、选项、公式、手写文字等。"
                               "请按原始格式完整输出识别到的文字内容，不要做任何总结或分析。"
-                              "如果有数学公式请用文字描述。如果图片中没有文字，请描述图片的主要内容。",
+                              "如果有数学公式请用文字描述。如果图片中没有文字，请描述图片的主要内容。"
+                              "\n\n最后请在末尾单独一行输出：【学科：数学/语文/英语/科学】，根据图片内容判断最可能属于哪个学科。",
                     },
                 ],
             }
@@ -84,7 +85,18 @@ async def ai_ocr(image_path: str, llm_config) -> str:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
+
+    # 尝试从末尾提取学科信息
+    detected_subject = ""
+    import re as _re
+    subject_match = _re.search(r'【学科[：:]?\s*(数学|语文|英语|科学)\s*】', content)
+    if subject_match:
+        detected_subject = subject_match.group(1)
+        # 从OCR文本中移除学科标记行
+        content = _re.sub(r'\n*【学科[：:]?\s*(?:数学|语文|英语|科学)\s*】\s*$', '', content).strip()
+
+    return {"ocr_text": content, "detected_subject": detected_subject}
 
 
 async def ai_analyze_image(image_path: str, llm_config, user_note: str = "", action: str = "wrong_question") -> dict:
@@ -214,6 +226,7 @@ async def upload_image(file: UploadFile = File(...), user_id: str = Form("")):
 
     ocr_text = ""
     ai_used = False
+    detected_subject = ""
 
     # 优先用 AI 视觉模型识别（使用全局配置，自动同步iFlow）
     from ..database import SessionLocal
@@ -222,7 +235,9 @@ async def upload_image(file: UploadFile = File(...), user_id: str = Form("")):
         llm_config = get_llm_config_with_iflow(db)
         if llm_config and llm_config.api_url and llm_config.api_key:
             try:
-                ocr_text = await ai_ocr(filepath, llm_config)
+                result = await ai_ocr(filepath, llm_config)
+                ocr_text = result.get("ocr_text", "")
+                detected_subject = result.get("detected_subject", "")
                 ai_used = True
             except Exception as e:
                 print(f"[AI OCR ERROR] {e}")
@@ -234,12 +249,18 @@ async def upload_image(file: UploadFile = File(...), user_id: str = Form("")):
     if not ocr_text:
         ocr_text = try_ocr(filepath)
 
+    # 将中文学科名映射为ID
+    subject_id_map = {"数学": "math", "语文": "chinese", "英语": "english", "科学": "science"}
+    detected_subject_id = subject_id_map.get(detected_subject, "")
+
     return {
         "file_id": file_id,
         "filename": filename,
         "url": f"/api/ocr/image/{filename}",
         "ocr_text": ocr_text,
         "ai_used": ai_used,
+        "detected_subject": detected_subject,
+        "detected_subject_id": detected_subject_id,
     }
 
 

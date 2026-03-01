@@ -32,6 +32,7 @@ export default function Chat() {
   const [imageModalOpen, setImageModalOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [subjectAutoDetected, setSubjectAutoDetected] = useState(false)
 
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -73,6 +74,7 @@ export default function Chat() {
     const preview = URL.createObjectURL(file)
     setPendingImage({ file, preview, filename: '', ocrText: '' })
     setImageNote('')
+    setSubjectAutoDetected(false)
     setUploading(true)
     setImageModalOpen(true) // 立即打开弹窗，显示图片预览和"识别中"
 
@@ -85,6 +87,11 @@ export default function Chat() {
         ocrText: res.data.ocr_text || '',
         aiUsed: res.data.ai_used || false,
       }))
+      // 自动识别学科
+      if (res.data.detected_subject_id) {
+        setImageSubject(res.data.detected_subject_id)
+        setSubjectAutoDetected(true)
+      }
     } catch (err) {
       console.error('上传图片失败:', err)
       message.error('图片上传失败，请重试')
@@ -326,10 +333,12 @@ export default function Chat() {
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: '#6b7280' }}>学科：</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  学科：{subjectAutoDetected && <span style={{ color: '#52c41a', marginLeft: 4 }}>🤖 AI已识别</span>}
+                </Text>
                 <Select
                   value={imageSubject}
-                  onChange={setImageSubject}
+                  onChange={(v) => { setImageSubject(v); setSubjectAutoDetected(false) }}
                   style={{ width: '100%', marginTop: 4 }}
                 >
                   {subjects.map((s) => (

@@ -35,6 +35,18 @@ def _migrate_db():
             conn.commit()
         except Exception:
             pass
+        # practice_sessions 表添加 status 字段
+        try:
+            conn.execute(sqlalchemy.text("ALTER TABLE practice_sessions ADD COLUMN status VARCHAR(20) DEFAULT 'completed'"))
+            conn.commit()
+        except Exception:
+            pass
+        # practice_sessions 表添加 practice_mode 字段
+        try:
+            conn.execute(sqlalchemy.text("ALTER TABLE practice_sessions ADD COLUMN practice_mode VARCHAR(20) DEFAULT 'custom'"))
+            conn.commit()
+        except Exception:
+            pass
 
 _migrate_db()
 
