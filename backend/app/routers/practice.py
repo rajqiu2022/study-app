@@ -3,6 +3,7 @@ import random
 import asyncio
 import os
 import hashlib
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -747,6 +748,28 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
         )
         db.add(wrong_record)
 
+    # 错题练习模式：更新原错题的复习次数
+    all_correct = (correct == len(questions))
+    if session.practice_mode == "wrong_review":
+        wrong_qs_to_update = (
+            db.query(WrongQuestion)
+            .filter(
+                WrongQuestion.user_id == session.user_id,
+                WrongQuestion.is_resolved == False,
+            )
+        )
+        if session.subject_id:
+            wrong_qs_to_update = wrong_qs_to_update.filter(
+                WrongQuestion.subject_id == session.subject_id
+            )
+        wrong_qs_to_update = wrong_qs_to_update.all()
+        for wq in wrong_qs_to_update:
+            wq.review_count += 1
+            wq.last_reviewed = date.today()
+            # 如果错题练习全对，标记原错题为已解决
+            if all_correct:
+                wq.is_resolved = True
+
     db.commit()
 
     # 如果有分值信息，用分值计算；否则回退到比例计算
@@ -763,6 +786,7 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
         "earned_score": earned_score,
         "details": questions,
         "wrong_added": len(wrong_list),
+        "all_correct": correct == len(questions),
     }
 
 

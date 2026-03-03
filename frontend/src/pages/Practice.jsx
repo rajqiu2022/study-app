@@ -577,13 +577,19 @@ export default function Practice() {
         <div>
           <Card style={{ borderRadius: 16, textAlign: 'center', marginBottom: 24 }}>
             <Result
-              status={result.score >= 60 ? 'success' : 'warning'}
+              status={result.all_correct || result.correct === result.total ? 'success' : result.score >= 60 ? 'success' : 'warning'}
               title={
-                result.total_score && result.total_score > 0
-                  ? `得分：${result.score} / ${result.total_score} 分`
-                  : `得分：${result.score}分`
+                result.all_correct || result.correct === result.total
+                  ? '🎉 全部答对！太棒了！'
+                  : result.total_score && result.total_score > 0
+                    ? `得分：${result.score} / ${result.total_score} 分`
+                    : `得分：${result.score}分`
               }
-              subTitle={`答对 ${result.correct} / ${result.total} 题`}
+              subTitle={
+                result.all_correct || result.correct === result.total
+                  ? `答对 ${result.correct} / ${result.total} 题，满分 ${result.total_score || 100} 分`
+                  : `答对 ${result.correct} / ${result.total} 题`
+              }
               extra={[
                 <Button type="primary" key="retry" onClick={handleReset}>再练一次</Button>,
                 <Button key="history" onClick={() => { handleReset(); setView('history') }}>查看记录</Button>,
