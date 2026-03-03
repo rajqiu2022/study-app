@@ -1,7 +1,10 @@
 import json
 import random
 import asyncio
+import os
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -11,6 +14,10 @@ from ..schemas import PracticeSessionCreate, PracticeSessionOut
 from ..llm_service import call_llm, build_practice_prompt, parse_llm_questions, get_llm_config_with_iflow
 
 router = APIRouter()
+
+# TTS 音频缓存目录
+TTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "tts")
+os.makedirs(TTS_DIR, exist_ok=True)
 
 # ==================== 数学题库 ====================
 MATH_TEMPLATES = {
@@ -583,13 +590,17 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
                 weak_points = weak_points_filtered
                 wrong_qs = wrong_qs_filtered
 
+        # 综合练习模式：题目数量由系统决定（约25题）
+        exam_count = 30 if practice_mode == "exam" else (data.total_questions or 5)
+
         prompt = build_practice_prompt(
             subject_id=data.subject_id or "math",
             knowledge_point=auto_knowledge_point,
-            count=data.total_questions or 5,
+            count=exam_count,
             grade=grade,
             weak_points=weak_points,
             wrong_questions=wrong_qs,
+            practice_mode=practice_mode,
         )
         # 追加练习模式的额外上下文
         if extra_context_for_prompt:
@@ -604,7 +615,7 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
                 prompt=prompt,
                 deep_thinking=llm_config.deep_thinking,
             )
-            questions = parse_llm_questions(llm_response, data.total_questions or 5)
+            questions = parse_llm_questions(llm_response, exam_count)
             if questions:
                 use_ai = True
         except Exception as e:
@@ -646,6 +657,43 @@ def list_sessions(user_id: str = Query(...), db: Session = Depends(get_db)):
     )
 
 
+@router.post("/tts/generate")
+async def generate_tts(data: dict):
+    """生成英语听力语音（Edge TTS）"""
+    text = data.get("text", "").strip()
+    if not text:
+        raise HTTPException(400, "缺少文本内容")
+
+    # 用文本 hash 做文件名缓存
+    text_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+    filename = f"{text_hash}.mp3"
+    filepath = os.path.join(TTS_DIR, filename)
+
+    # 如果缓存存在直接返回
+    if os.path.exists(filepath):
+        return {"url": f"/api/practice/tts/audio/{filename}"}
+
+    try:
+        import edge_tts
+        voice = data.get("voice", "en-US-JennyNeural")
+        rate = data.get("rate", "-10%")
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
+        await communicate.save(filepath)
+        return {"url": f"/api/practice/tts/audio/{filename}"}
+    except Exception as e:
+        print(f"[TTS ERROR] {e}")
+        raise HTTPException(500, f"语音生成失败: {str(e)}")
+
+
+@router.get("/tts/audio/{filename}")
+def get_tts_audio(filename: str):
+    """获取 TTS 音频文件"""
+    filepath = os.path.join(TTS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(404, "音频文件不存在")
+    return FileResponse(filepath, media_type="audio/mpeg")
+
+
 @router.post("/{session_id}/submit")
 def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)):
     """提交答案: answers = {"answers": {"1": "42", "2": "10", ...}}"""
@@ -657,14 +705,19 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
     user_answers = answers.get("answers", {})
     correct = 0
     wrong_list = []
+    total_score = 0
+    earned_score = 0
 
     for q in questions:
         idx = str(q["index"])
+        q_score = q.get("score", 0)
+        total_score += q_score
         if idx in user_answers:
             q["user_answer"] = user_answers[idx]
             q["is_correct"] = user_answers[idx].strip() == q["answer"].strip()
             if q["is_correct"]:
                 correct += 1
+                earned_score += q_score
             else:
                 wrong_list.append(q)
 
@@ -687,10 +740,18 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
 
     db.commit()
 
+    # 如果有分值信息，用分值计算；否则回退到比例计算
+    if total_score > 0:
+        score = earned_score
+    else:
+        score = round(correct / len(questions) * 100) if questions else 0
+
     return {
         "total": len(questions),
         "correct": correct,
-        "score": round(correct / len(questions) * 100) if questions else 0,
+        "score": score,
+        "total_score": total_score if total_score > 0 else 100,
+        "earned_score": earned_score,
         "details": questions,
         "wrong_added": len(wrong_list),
     }

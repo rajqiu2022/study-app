@@ -137,7 +137,7 @@ class PracticeSessionCreate(BaseModel):
     subject_id: str
     knowledge_point: Optional[str] = ""
     question_type: Optional[str] = "混合"
-    practice_mode: Optional[str] = "custom"  # wrong_review/important_review/custom
+    practice_mode: Optional[str] = "custom"  # wrong_review/important_review/custom/exam
     total_questions: Optional[int] = 5
 
 class PracticeSessionOut(BaseModel):

@@ -137,13 +137,13 @@ async def _call_openai_compatible(api_url: str, api_key: str, model_name: str, p
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.7,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
     }
 
     # 深度思考模式：降低温度以获得更严谨的输出，增加 token 限制
     if deep_thinking:
         payload["temperature"] = 0.3
-        payload["max_tokens"] = 8192
+        payload["max_tokens"] = 16384
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -177,6 +177,7 @@ async def _call_ollama(api_url: str, model_name: str, prompt: str, timeout: floa
 def build_practice_prompt(
     subject_id: str, knowledge_point: str, count: int, grade: str = "三年级",
     weak_points: list = None, wrong_questions: list = None,
+    practice_mode: str = "custom",
 ) -> str:
     """构建出题 prompt，融合用户知识库数据"""
     subject_name = SUBJECT_NAMES.get(subject_id, "数学")
@@ -203,6 +204,10 @@ def build_practice_prompt(
 {chr(10).join(context_parts)}
 """
 
+    # 综合练习模式：模拟考试出题
+    if practice_mode == "exam":
+        return _build_exam_prompt(subject_id, subject_name, grade, context_text, kp_text)
+
     return f"""请为{grade}小学生出{count}道{subject_name}题目{kp_text}。{context_text}
 要求：
 1. 题目难度适合小学{grade}学生
@@ -217,7 +222,8 @@ def build_practice_prompt(
     "question": "题目内容",
     "type": "选择题/填空题/判断题",
     "options": ["选项1", "选项2", "选项3", "选项4"],
-    "answer": "正确答案"
+    "answer": "正确答案",
+    "score": 分值
   }}
 ]
 ```
@@ -227,6 +233,79 @@ def build_practice_prompt(
 - 判断题的 options 设为 ["对", "错"]，answer 填写 "对" 或 "错"
 - 填空题的 options 设为 null
 - answer 字段填写正确答案的文本
+- score 字段为该题分值
+- 只返回JSON数组，不要有其他文字"""
+
+
+def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_text: str, kp_text: str) -> str:
+    """构建综合考试 prompt（满分100分）"""
+
+    if subject_id == "math":
+        exam_structure = """题型结构（满分100分）：
+一、填空题（共5题，每题4分，共20分）- 基础计算和概念
+二、选择题（共5题，每题4分，共20分）- 概念理解和判断
+三、判断题（共5题，每题4分，共20分）- 正误判断
+四、计算题（共4题，每题5分，共20分）- 计算过程，直接写出计算步骤和结果
+五、应用题（共2题，每题10分，共20分）- 综合运用，需要列算式解答"""
+
+    elif subject_id == "english":
+        exam_structure = """题型结构（满分100分）：
+一、听力题（共5题，每题4分，共20分）- 听句子选择正确答案。请为每道听力题提供一个 "listening_text" 字段，内容是需要朗读的英文句子或对话（学生听后作答）
+二、选择题（共5题，每题4分，共20分）- 词汇和语法选择
+三、判断题（共5题，每题4分，共20分）- 句子正误判断
+四、填空题（共5题，每题4分，共20分）- 根据语境填写单词或短语
+五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容"""
+
+    elif subject_id == "chinese":
+        exam_structure = """题型结构（满分100分）：
+一、填空题（共5题，每题4分，共20分）- 字词拼音、组词填空
+二、选择题（共5题，每题4分，共20分）- 字词辨析、语文知识
+三、判断题（共5题，每题4分，共20分）- 语文常识正误判断
+四、古诗词填空（共5题，每题4分，共20分）- 根据上下句填写古诗词
+五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容"""
+
+    else:  # science
+        exam_structure = """题型结构（满分100分）：
+一、填空题（共5题，每题4分，共20分）- 科学知识填空
+二、选择题（共5题，每题4分，共20分）- 科学概念理解
+三、判断题（共5题，每题4分，共20分）- 科学常识正误判断
+四、简答题（共4题，每题5分，共20分）- 简要回答科学问题
+五、实验题（共2题，每题10分，共20分）- 实验设计或分析"""
+
+    return f"""请为{grade}小学生出一套{subject_name}综合测试卷{kp_text}，模拟正式考试，满分100分。{context_text}
+
+{exam_structure}
+
+要求：
+1. 题目难度适合小学{grade}学生，符合新课标要求
+2. 知识点覆盖面广，难度由易到难
+3. 每道题必须有明确的正确答案和对应分值
+4. 题目编号从1开始连续编号
+
+请严格按照以下JSON格式返回，不要返回任何其他内容：
+```json
+[
+  {{
+    "question": "题目内容",
+    "type": "填空题/选择题/判断题/计算题/应用题/听力题/阅读理解/古诗词填空/简答题/实验题",
+    "options": ["选项1", "选项2", "选项3", "选项4"],
+    "answer": "正确答案",
+    "score": 分值数字,
+    "section": "一/二/三/四/五",
+    "listening_text": "听力朗读文本（仅听力题需要）",
+    "reading_passage": "阅读短文内容（仅阅读理解题需要）"
+  }}
+]
+```
+
+注意：
+- 选择题/听力题/阅读理解必须有 options 字段（4个选项），选项不要带A/B/C/D前缀
+- 判断题的 options 设为 ["对", "错"]，answer 填 "对" 或 "错"
+- 填空题/计算题/应用题/古诗词填空/简答题/实验题的 options 设为 null
+- 听力题必须包含 listening_text 字段（英文朗读内容）
+- 阅读理解题必须包含 reading_passage 字段（阅读短文）
+- score 为每题分值，所有题目分值总和必须等于100
+- section 字段标明所属大题序号
 - 只返回JSON数组，不要有其他文字"""
 
 
@@ -327,26 +406,35 @@ def parse_llm_questions(llm_response: str, count: int) -> list | None:
             if isinstance(options, list) and len(options) > 0:
                 # 清理选项中的序号前缀，如 "A.xxx"、"A、xxx"、"A) xxx"
                 options = [re.sub(r'^[A-Da-d][.、.\s)\]】]+\s*', '', str(opt)) for opt in options]
-                q_type = "选择题"
+                q_type = q.get("type", "选择题")
+                # 保留特殊题型名称
+                if q_type not in ("听力题", "阅读理解"):
+                    q_type = "选择题"
             else:
                 options = None
                 q_type = q.get("type", "填空题")
                 if "判断" in q_type:
                     q_type = "判断题"
-                elif "填空" in q_type:
-                    q_type = "填空题"
-                else:
-                    q_type = "填空题"
 
-            questions.append({
+            item = {
                 "index": i + 1,
                 "question": q.get("question", ""),
                 "type": q_type,
                 "options": options,
                 "answer": str(q.get("answer", "")),
+                "score": q.get("score", 0),
+                "section": q.get("section", ""),
                 "user_answer": "",
                 "is_correct": None,
-            })
+            }
+            # 听力题：保留朗读文本
+            if q.get("listening_text"):
+                item["listening_text"] = q["listening_text"]
+            # 阅读理解：保留短文
+            if q.get("reading_passage"):
+                item["reading_passage"] = q["reading_passage"]
+
+            questions.append(item)
 
         return questions if questions else None
 
