@@ -12,6 +12,7 @@ import {
   SettingOutlined,
   ApiOutlined,
   NodeIndexOutlined,
+  ReadOutlined,
 } from '@ant-design/icons'
 import Dashboard from './pages/Dashboard'
 import LearningRecords from './pages/LearningRecords'
@@ -21,6 +22,7 @@ import Chat from './pages/Chat'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
 import KnowledgeGraph from './pages/KnowledgeGraph'
+import Notebooks from './pages/Notebooks'
 import { getCurrentUser, setCurrentUser, clearCurrentUser, updateUser } from './api'
 
 const { Sider, Content } = Layout
@@ -32,6 +34,7 @@ const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '学习仪表盘' },
   { key: '/records', icon: <BookOutlined />, label: '学习记录' },
   { key: '/wrong', icon: <CloseCircleOutlined />, label: '错题本' },
+  { key: '/notebooks', icon: <ReadOutlined />, label: '笔记本' },
   { key: '/practice', icon: <ThunderboltOutlined />, label: '智能练习' },
   { key: '/knowledge', icon: <NodeIndexOutlined />, label: '知识图谱' },
   { key: '/chat', icon: <MessageOutlined />, label: 'AI小助手' },
@@ -44,10 +47,10 @@ const adminMenuItems = [
 // 移动端底部Tab配置
 const mobileTabItems = [
   { key: '/', icon: <DashboardOutlined />, label: '首页' },
-  { key: '/records', icon: <BookOutlined />, label: '记录' },
+  { key: '/notebooks', icon: <ReadOutlined />, label: '笔记' },
   { key: '/chat', icon: <MessageOutlined />, label: '助手' },
-  { key: '/knowledge', icon: <NodeIndexOutlined />, label: '图谱' },
   { key: '/practice', icon: <ThunderboltOutlined />, label: '练习' },
+  { key: '/records', icon: <BookOutlined />, label: '记录' },
 ]
 
 function useIsMobile() {
@@ -135,6 +138,7 @@ function AppLayout({ user, onLogout, onUserUpdate }) {
             <Route path="/" element={<Dashboard />} />
             <Route path="/records" element={<LearningRecords />} />
             <Route path="/wrong" element={<WrongQuestions />} />
+            <Route path="/notebooks" element={<Notebooks />} />
             <Route path="/practice" element={<Practice />} />
             <Route path="/knowledge" element={<KnowledgeGraph />} />
             <Route path="/chat" element={<Chat />} />
@@ -225,6 +229,7 @@ function AppLayout({ user, onLogout, onUserUpdate }) {
             <Route path="/" element={<Dashboard />} />
             <Route path="/records" element={<LearningRecords />} />
             <Route path="/wrong" element={<WrongQuestions />} />
+            <Route path="/notebooks" element={<Notebooks />} />
             <Route path="/practice" element={<Practice />} />
             <Route path="/knowledge" element={<KnowledgeGraph />} />
             <Route path="/chat" element={<Chat />} />

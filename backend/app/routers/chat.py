@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 
 from ..database import get_db
-from ..models import LearningRecord, WrongQuestion, Subject, LLMConfig
+from ..models import LearningRecord, WrongQuestion, Subject, LLMConfig, Notebook, User
 from ..schemas import ChatMessage, ChatResponse
 from ..llm_service import call_llm, get_llm_config_with_iflow
 
@@ -274,6 +274,12 @@ def parse_intent(message: str, subjects: list):
     elif any(kw in msg for kw in ["薄弱", "弱项", "哪里不好", "什么不会", "分析"]):
         return "analysis", {"subject_id": subject_id}
 
+    elif any(kw in msg for kw in ["记笔记", "笔记", "记一下", "记录笔记", "写笔记", "做笔记"]):
+        return "notebook", {
+            "content": message,
+            "subject_id": subject_id,
+        }
+
     else:
         return "chat", {"message": message}
 
@@ -352,6 +358,52 @@ async def chat(data: ChatMessage, db: Session = Depends(get_db)):
             action="redirect_practice",
             data={"subject_id": params["subject_id"], "knowledge_point": kp, "count": count},
         )
+
+    elif intent == "notebook":
+        # 创建笔记
+        note_content = data.message
+        user = db.query(User).filter(User.id == data.user_id).first()
+        grade = user.grade if user else "三年级"
+
+        notebook = Notebook(
+            user_id=data.user_id,
+            title=note_content[:20] + ("..." if len(note_content) > 20 else ""),
+            content=note_content,
+            grade=grade,
+            ai_category="课堂笔记",
+        )
+
+        # 尝试AI分析归类
+        llm_config = get_llm_config_with_iflow(db)
+        if llm_config and llm_config.api_url and llm_config.api_key:
+            try:
+                from .notebooks import ai_classify_note
+                ai_result = await ai_classify_note(note_content, [], llm_config, grade)
+                if ai_result:
+                    import json as _json
+                    notebook.title = ai_result.get("title", notebook.title)
+                    subject_name = ai_result.get("subject", "")
+                    _subject_map = {"数学": "math", "语文": "chinese", "英语": "english", "科学": "science"}
+                    if subject_name in _subject_map:
+                        notebook.subject_id = _subject_map[subject_name]
+                    notebook.ai_summary = ai_result.get("summary", "")
+                    notebook.ai_knowledge_points = _json.dumps(ai_result.get("knowledge_points", []), ensure_ascii=False)
+                    notebook.ai_category = ai_result.get("category", "课堂笔记")
+                    notebook.tags = _json.dumps(ai_result.get("tags", []), ensure_ascii=False)
+            except Exception as e:
+                print(f"[NOTEBOOK AI ERROR in chat] {e}")
+
+        db.add(notebook)
+        db.commit()
+
+        reply = f"📓 已保存到笔记本！\n\n📌 标题：{notebook.title}"
+        if notebook.ai_summary:
+            reply += f"\n📝 摘要：{notebook.ai_summary}"
+        if notebook.ai_category:
+            reply += f"\n🏷️ 分类：{notebook.ai_category}"
+        reply += "\n\n你可以到「笔记本」页面查看所有笔记哦！"
+
+        return ChatResponse(reply=reply, action="created_notebook")
 
     elif intent == "analysis":
         records = (

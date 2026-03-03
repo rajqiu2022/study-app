@@ -2,22 +2,23 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Card, Input, Button, Typography, Spin, Upload, Modal, Select, message, Image, Switch, Tooltip } from 'antd'
 import {
   SendOutlined, RobotOutlined, UserOutlined, CameraOutlined,
-  PictureOutlined, CloseOutlined, GlobalOutlined,
+  PictureOutlined, CloseOutlined, GlobalOutlined, ReadOutlined,
 } from '@ant-design/icons'
-import { sendChat, uploadImage, recognizeAndSave, getImageUrl, getSubjects } from '../api'
+import { sendChat, uploadImage, recognizeAndSave, getImageUrl, getSubjects, createNotebook, getCurrentUserId } from '../api'
 
 const { Title, Text } = Typography
 
 const ACTION_OPTIONS = [
   { label: '📝 记录错题', value: 'wrong_question' },
   { label: '📚 记录重点知识', value: 'learning_record' },
+  { label: '📓 保存为笔记', value: 'notebook' },
 ]
 
 export default function Chat() {
   const [messages, setMessages] = useState([
     {
       role: 'bot',
-      content: '你好！我是你的学习小助手 🤖\n\n你可以：\n📚 输入「我今天学了XXX」- 记录学习\n❌ 输入「XX题做错了」- 添加错题\n🎯 输入「帮我出5道XX题」- 生成练习\n📸 发送图片 - 识别题目并记录\n📊 输入「分析薄弱点」- 查看分析',
+      content: '你好！我是你的学习小助手 🤖\n\n你可以：\n📚 输入「我今天学了XXX」- 记录学习\n❌ 输入「XX题做错了」- 添加错题\n📓 输入「记笔记」- 创建学习笔记\n🎯 输入「帮我出5道XX题」- 生成练习\n📸 发送图片 - 识别题目并记录\n📊 输入「分析薄弱点」- 查看分析',
     },
   ])
   const [input, setInput] = useState('')
@@ -114,29 +115,44 @@ export default function Chat() {
     }])
 
     try {
-      const res = await recognizeAndSave({
-        action: imageAction,
-        subject_id: imageSubject,
-        content: imageNote,
-        image_filename: pendingImage.filename,
-        ocr_text: pendingImage.ocrText,
-      })
+      // 如果选择保存为笔记
+      if (imageAction === 'notebook') {
+        const formData = new FormData()
+        formData.append('user_id', getCurrentUserId())
+        formData.append('content', imageNote || '')
+        formData.append('audio_text', '')
+        formData.append('image_filenames', JSON.stringify([pendingImage.filename]))
+        await createNotebook(formData)
+        setMessages((prev) => [...prev, {
+          role: 'bot',
+          content: '📓 已保存为笔记！AI正在自动分析归类，你可以到「笔记本」页面查看。',
+          action: 'created_notebook',
+        }])
+      } else {
+        const res = await recognizeAndSave({
+          action: imageAction,
+          subject_id: imageSubject,
+          content: imageNote,
+          image_filename: pendingImage.filename,
+          ocr_text: pendingImage.ocrText,
+        })
 
-      let reply = res.data.message
-      if (res.data.ocr_text && !res.data.ai_analysis) {
-        reply += `\n\n📋 识别到的内容：\n${res.data.ocr_text.substring(0, 200)}`
-      }
-      if (!res.data.ai_analysis) {
-        reply += imageAction === 'wrong_question'
-          ? '\n\n已添加到错题本，记得定期复习哦！📝'
-          : '\n\n已记录为重点知识，加油学习！💪'
-      }
+        let reply = res.data.message
+        if (res.data.ocr_text && !res.data.ai_analysis) {
+          reply += `\n\n📋 识别到的内容：\n${res.data.ocr_text.substring(0, 200)}`
+        }
+        if (!res.data.ai_analysis) {
+          reply += imageAction === 'wrong_question'
+            ? '\n\n已添加到错题本，记得定期复习哦！📝'
+            : '\n\n已记录为重点知识，加油学习！💪'
+        }
 
-      setMessages((prev) => [...prev, {
-        role: 'bot',
-        content: reply,
-        action: res.data.action === 'wrong_question' ? 'created_wrong_question' : 'created_learning_record',
-      }])
+        setMessages((prev) => [...prev, {
+          role: 'bot',
+          content: reply,
+          action: res.data.action === 'wrong_question' ? 'created_wrong_question' : 'created_learning_record',
+        }])
+      }
     } catch {
       setMessages((prev) => [...prev, { role: 'bot', content: '保存失败，请重试。' }])
     }
@@ -150,7 +166,9 @@ export default function Chat() {
     const map = {
       created_learning_record: '已添加学习记录',
       created_wrong_question: '已添加错题',
+      created_notebook: '已保存笔记',
       redirect_practice: '请前往智能练习页面',
+      redirect_notebook: '请前往笔记本页面',
       analysis: '学习分析',
     }
     return map[action] || action
@@ -332,20 +350,27 @@ export default function Chat() {
                   style={{ width: '100%', marginTop: 4 }}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: '#6b7280' }}>
-                  学科：{subjectAutoDetected && <span style={{ color: '#52c41a', marginLeft: 4 }}>🤖 AI已识别</span>}
-                </Text>
-                <Select
-                  value={imageSubject}
-                  onChange={(v) => { setImageSubject(v); setSubjectAutoDetected(false) }}
-                  style={{ width: '100%', marginTop: 4 }}
-                >
-                  {subjects.map((s) => (
-                    <Select.Option key={s.id} value={s.id}>{s.icon} {s.name}</Select.Option>
-                  ))}
-                </Select>
-              </div>
+              {imageAction !== 'notebook' && (
+                <div style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                    学科：{subjectAutoDetected && <span style={{ color: '#52c41a', marginLeft: 4 }}>🤖 AI已识别</span>}
+                  </Text>
+                  <Select
+                    value={imageSubject}
+                    onChange={(v) => { setImageSubject(v); setSubjectAutoDetected(false) }}
+                    style={{ width: '100%', marginTop: 4 }}
+                  >
+                    {subjects.map((s) => (
+                      <Select.Option key={s.id} value={s.id}>{s.icon} {s.name}</Select.Option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              {imageAction === 'notebook' && (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '8px 0' }}>
+                  <Text style={{ fontSize: 12, color: '#8b5cf6' }}>📓 AI 将自动识别学科和知识点</Text>
+                </div>
+              )}
             </div>
 
             {/* 补充说明 */}

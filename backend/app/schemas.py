@@ -158,6 +158,41 @@ class PracticeSessionOut(BaseModel):
         from_attributes = True
 
 
+# --- Notebook ---
+class NotebookCreate(BaseModel):
+    user_id: str
+    content: Optional[str] = ""
+    image_filenames: Optional[List[str]] = []
+    audio_text: Optional[str] = ""
+
+class NotebookUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    is_starred: Optional[bool] = None
+    tags: Optional[List[str]] = None
+
+class NotebookOut(BaseModel):
+    id: str
+    user_id: str
+    subject_id: Optional[str] = ""
+    title: str
+    content: str
+    image_urls: str
+    audio_url: str
+    audio_text: str
+    ai_summary: str
+    ai_knowledge_points: str
+    ai_category: str
+    grade: str
+    semester: str
+    tags: str
+    is_starred: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+
 # --- LLM Config ---
 class LLMConfigCreate(BaseModel):
     provider: str = "openai"  # openai / ollama

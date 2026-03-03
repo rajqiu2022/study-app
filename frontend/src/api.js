@@ -117,4 +117,23 @@ export const getCurriculum = (grade, subjectId, semester) =>
 export const getCurriculumTopics = (grade, subjectId, semester, unit) =>
   api.get('/curriculum/topics', { params: { grade, subject_id: subjectId, semester, unit: unit || undefined } })
 
+// ---- 笔记本 ----
+export const getNotebooks = (params = {}) =>
+  api.get('/notebooks/', { params: { user_id: uid(), ...params } })
+export const getNotebook = (id) => api.get(`/notebooks/${id}`)
+export const createNotebook = (formData) =>
+  api.post('/notebooks/', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+export const updateNotebook = (id, data) => api.put(`/notebooks/${id}`, data)
+export const deleteNotebook = (id) => api.delete(`/notebooks/${id}`)
+export const uploadNoteImage = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/notebooks/upload-image', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+}
+export const uploadNoteAudio = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/notebooks/upload-audio', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+}
+
 export default api

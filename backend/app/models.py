@@ -24,6 +24,7 @@ class User(Base):
     learning_records = relationship("LearningRecord", back_populates="user", cascade="all, delete-orphan")
     wrong_questions = relationship("WrongQuestion", back_populates="user", cascade="all, delete-orphan")
     practice_sessions = relationship("PracticeSession", back_populates="user", cascade="all, delete-orphan")
+    notebooks = relationship("Notebook", cascade="all, delete-orphan")
 
 
 class Subject(Base):

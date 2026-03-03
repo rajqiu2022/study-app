@@ -71,6 +71,7 @@ app.include_router(ocr.router, prefix="/api/ocr", tags=["图片识别"])
 app.include_router(settings.router, prefix="/api/settings", tags=["系统设置"])
 app.include_router(knowledge_graph.router, prefix="/api/knowledge-graph", tags=["知识图谱"])
 app.include_router(curriculum.router, prefix="/api/curriculum", tags=["课本大纲"])
+app.include_router(notebooks.router, prefix="/api/notebooks", tags=["笔记本"])
 
 
 @app.on_event("startup")
