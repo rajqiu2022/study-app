@@ -101,6 +101,30 @@ class LLMConfig(Base):
     user = relationship("User")
 
 
+class Notebook(Base):
+    __tablename__ = "notebooks"
+    id = Column(String(36), primary_key=True, default=gen_id)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    subject_id = Column(String(36), ForeignKey("subjects.id"), nullable=True)
+    title = Column(String(200), default="")
+    content = Column(Text, default="")
+    image_urls = Column(Text, default="")
+    audio_url = Column(String(500), default="")
+    audio_text = Column(Text, default="")
+    ai_summary = Column(Text, default="")
+    ai_knowledge_points = Column(Text, default="")
+    ai_category = Column(String(100), default="")
+    grade = Column(String(10), default="")
+    semester = Column(String(10), default="")
+    tags = Column(Text, default="")
+    is_starred = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    user = relationship("User")
+    subject = relationship("Subject")
+
+
 class PracticeSession(Base):
     __tablename__ = "practice_sessions"
     id = Column(String(36), primary_key=True, default=gen_id)
