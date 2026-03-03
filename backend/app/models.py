@@ -121,7 +121,7 @@ class Notebook(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    user = relationship("User")
+    user = relationship("User", overlaps="notebooks")
     subject = relationship("Subject")
 
 
