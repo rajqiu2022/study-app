@@ -714,7 +714,16 @@ def submit_answers(session_id: str, answers: dict, db: Session = Depends(get_db)
         total_score += q_score
         if idx in user_answers:
             q["user_answer"] = user_answers[idx]
-            q["is_correct"] = user_answers[idx].strip() == q["answer"].strip()
+            user_ans = user_answers[idx].strip()
+            correct_ans = q["answer"].strip()
+            # 精确匹配
+            if user_ans == correct_ans:
+                q["is_correct"] = True
+            # 忽略大小写匹配
+            elif user_ans.lower() == correct_ans.lower():
+                q["is_correct"] = True
+            else:
+                q["is_correct"] = False
             if q["is_correct"]:
                 correct += 1
                 earned_score += q_score

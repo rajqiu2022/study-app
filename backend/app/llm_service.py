@@ -233,7 +233,9 @@ def build_practice_prompt(
 - 判断题的 options 设为 ["对", "错"]，answer 填写 "对" 或 "错"
 - 填空题的 options 设为 null
 - answer 字段填写正确答案的文本
+- 选择题的 answer 必须与 options 中某个选项完全相同，一字不差
 - score 字段为该题分值
+- 禁止出任何需要看图片的题目，因为系统无法显示图片
 - 只返回JSON数组，不要有其他文字"""
 
 
@@ -243,34 +245,55 @@ def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_t
     if subject_id == "math":
         exam_structure = """题型结构（满分100分）：
 一、填空题（共5题，每题4分，共20分）- 基础计算和概念
-二、选择题（共5题，每题4分，共20分）- 概念理解和判断
+二、选择题（共5题，每题4分，共20分）- 概念理解和判断。answer 必须与 options 中某个选项完全相同
 三、判断题（共5题，每题4分，共20分）- 正误判断
 四、计算题（共4题，每题5分，共20分）- 计算过程，直接写出计算步骤和结果
-五、应用题（共2题，每题10分，共20分）- 综合运用，需要列算式解答"""
+五、应用题（共2题，每题10分，共20分）- 综合运用，需要列算式解答
+
+【重要约束】禁止出任何需要看图片的题目（如"看图列算式"、"观察图形"等），因为系统无法显示图片"""
 
     elif subject_id == "english":
         exam_structure = """题型结构（满分100分）：
-一、听力题（共5题，每题4分，共20分）- 听句子选择正确答案。请为每道听力题提供一个 "listening_text" 字段，内容是需要朗读的英文句子或对话（学生听后作答）
-二、选择题（共5题，每题4分，共20分）- 词汇和语法选择
-三、判断题（共5题，每题4分，共20分）- 句子正误判断
+一、听力题（共5题，每题4分，共20分）- 听英文内容选择正确答案。请为每道听力题提供一个 "listening_text" 字段，内容是需要朗读的英文（学生听后作答）。
+  听力题内容要求多样化：
+  - 至少1题为单词听力（听单词选中文含义或对应图片描述）
+  - 至少2题为短语或短句听力（如 "a red apple", "on the desk", "Good morning!"）
+  - 至少1题为完整句子或简短对话听力（如 "What color is the cat? It's black."）
+  听力题的 listening_text 不要只是单个单词，要包含短语和句子。
+二、选择题（共5题，每题4分，共20分）- 词汇和语法综合选择，要求：
+  - 至少2题考察语法知识（如 be 动词选择、单复数、时态、介词、冠词等）
+  - 至少2题考察词汇（同义词辨析、词义理解等）
+  - 【重要】answer 的值必须是 options 数组中的某个选项的完全一致的文本，不能有任何差异（如选项是 "cat" 则 answer 不能是 "a cat"）
+三、判断题（共5题，每题4分，共20分）- 英语句子正误判断，要求题目内容多样化：
+  - 至少2题考察语法正误（如 "He have a dog." 判断句子语法是否正确）
+  - 至少2题考察句意/常识正误（如 "Monday is the first day of the week."）
+  - 不要所有题都只考察单词意思
 四、填空题（共5题，每题4分，共20分）- 根据语境填写单词或短语
-五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容"""
+五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容
+
+【重要约束】
+- 禁止出任何需要看图片的题目（如"看图选词"、"看图写话"等），因为系统无法生成图片
+- 所有选择题（包括听力题、阅读理解题）的 answer 值必须与 options 中某个选项完全相同，一字不差"""
 
     elif subject_id == "chinese":
         exam_structure = """题型结构（满分100分）：
 一、填空题（共5题，每题4分，共20分）- 字词拼音、组词填空
-二、选择题（共5题，每题4分，共20分）- 字词辨析、语文知识
+二、选择题（共5题，每题4分，共20分）- 字词辨析、语文知识。answer 必须与 options 中某个选项完全相同
 三、判断题（共5题，每题4分，共20分）- 语文常识正误判断
 四、古诗词填空（共5题，每题4分，共20分）- 根据上下句填写古诗词
-五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容"""
+五、阅读理解（共1篇，5小题，每题4分，共20分）- 提供一篇短文，设置5道选择题。所有5道阅读理解题的 "reading_passage" 字段都填写同一篇短文内容
+
+【重要约束】禁止出任何需要看图片的题目（如"看图写话"、"看图说话"等），因为系统无法显示图片"""
 
     else:  # science
         exam_structure = """题型结构（满分100分）：
 一、填空题（共5题，每题4分，共20分）- 科学知识填空
-二、选择题（共5题，每题4分，共20分）- 科学概念理解
+二、选择题（共5题，每题4分，共20分）- 科学概念理解。answer 必须与 options 中某个选项完全相同
 三、判断题（共5题，每题4分，共20分）- 科学常识正误判断
 四、简答题（共4题，每题5分，共20分）- 简要回答科学问题
-五、实验题（共2题，每题10分，共20分）- 实验设计或分析"""
+五、实验题（共2题，每题10分，共20分）- 实验设计或分析
+
+【重要约束】禁止出任何需要看图片的题目（如"观察实验图"、"看图回答"等），因为系统无法显示图片"""
 
     return f"""请为{grade}小学生出一套{subject_name}综合测试卷{kp_text}，模拟正式考试，满分100分。{context_text}
 
@@ -304,8 +327,10 @@ def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_t
 - 填空题/计算题/应用题/古诗词填空/简答题/实验题的 options 设为 null
 - 听力题必须包含 listening_text 字段（英文朗读内容）
 - 阅读理解题必须包含 reading_passage 字段（阅读短文）
+- 【关键】所有有选项的题目，answer 的值必须是 options 数组中某个选项完全相同的文本，不能有任何多余或缺少的字词（如选项是 "cat"，answer 不能写 "a cat"）
 - score 为每题分值，所有题目分值总和必须等于100
 - section 字段标明所属大题序号
+- 禁止出任何需要看图片的题目，系统无法显示图片
 - 只返回JSON数组，不要有其他文字"""
 
 
@@ -416,12 +441,34 @@ def parse_llm_questions(llm_response: str, count: int) -> list | None:
                 if "判断" in q_type:
                     q_type = "判断题"
 
+            answer = str(q.get("answer", ""))
+
+            # 答案与选项一致性校正：如果 answer 不在 options 中，尝试模糊匹配
+            if options and answer not in options:
+                answer_lower = answer.strip().lower()
+                matched = False
+                for opt in options:
+                    opt_lower = opt.strip().lower()
+                    if opt_lower == answer_lower:
+                        answer = opt  # 大小写不一致，用选项值
+                        matched = True
+                        break
+                if not matched:
+                    # 尝试去掉冠词等细微差异匹配（如 "a cat" vs "cat"）
+                    answer_normalized = re.sub(r'^(a|an|the)\s+', '', answer_lower)
+                    for opt in options:
+                        opt_normalized = re.sub(r'^(a|an|the)\s+', '', opt.strip().lower())
+                        if opt_normalized == answer_normalized or opt_normalized == answer_lower or answer_normalized == opt.strip().lower():
+                            answer = opt
+                            matched = True
+                            break
+
             item = {
                 "index": i + 1,
                 "question": q.get("question", ""),
                 "type": q_type,
                 "options": options,
-                "answer": str(q.get("answer", "")),
+                "answer": answer,
                 "score": q.get("score", 0),
                 "section": q.get("section", ""),
                 "user_answer": "",
