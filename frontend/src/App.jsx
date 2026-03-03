@@ -26,7 +26,7 @@ import { getCurrentUser, setCurrentUser, clearCurrentUser, updateUser } from './
 const { Sider, Content } = Layout
 const { Text } = Typography
 
-const GRADES = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级']
+const GRADES = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '七年级', '八年级', '九年级']
 
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '学习仪表盘' },

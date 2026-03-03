@@ -178,6 +178,7 @@ def build_practice_prompt(
     subject_id: str, knowledge_point: str, count: int, grade: str = "三年级",
     weak_points: list = None, wrong_questions: list = None,
     practice_mode: str = "custom",
+    curriculum_topics: list = None, semester: str = None, unit_name: str = None,
 ) -> str:
     """构建出题 prompt，融合用户知识库数据"""
     subject_name = SUBJECT_NAMES.get(subject_id, "数学")
@@ -185,6 +186,16 @@ def build_practice_prompt(
 
     # 构建知识库上下文
     context_parts = []
+
+    # 课本大纲知识点
+    if curriculum_topics:
+        curriculum_desc = f"【课本大纲】本次出题范围为{grade}{semester or ''}{subject_name}"
+        if unit_name:
+            curriculum_desc += f"「{unit_name}」"
+        curriculum_desc += f"的内容，具体知识点包括：{'、'.join(curriculum_topics)}"
+        curriculum_desc += "\n请严格围绕以上课本知识点出题，题目内容必须符合该年级该学期课本的教学进度和范围。"
+        context_parts.append(curriculum_desc)
+
     if weak_points:
         context_parts.append(f"该学生的薄弱知识点：{'、'.join(weak_points[:10])}")
     if wrong_questions:
@@ -204,13 +215,19 @@ def build_practice_prompt(
 {chr(10).join(context_parts)}
 """
 
+    # 判断学段
+    grade_num = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    g_num = grade_num.get(grade[0] if grade else "", 3)
+    school_level = "初中" if g_num >= 7 else "小学"
+    student_desc = f"{school_level}{grade}学生"
+
     # 综合练习模式：模拟考试出题
     if practice_mode == "exam":
-        return _build_exam_prompt(subject_id, subject_name, grade, context_text, kp_text)
+        return _build_exam_prompt(subject_id, subject_name, grade, context_text, kp_text, student_desc=student_desc)
 
-    return f"""请为{grade}小学生出{count}道{subject_name}题目{kp_text}。{context_text}
+    return f"""请为{student_desc}出{count}道{subject_name}题目{kp_text}。{context_text}
 要求：
-1. 题目难度适合小学{grade}学生
+1. 题目难度适合{student_desc}
 2. 题型可以混合（选择题、填空题、判断题等）
 3. 每道题必须有明确的正确答案
 4. 如果有薄弱知识点信息，请重点围绕这些知识点出题
@@ -239,8 +256,10 @@ def build_practice_prompt(
 - 只返回JSON数组，不要有其他文字"""
 
 
-def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_text: str, kp_text: str) -> str:
+def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_text: str, kp_text: str, student_desc: str = None) -> str:
     """构建综合考试 prompt（满分100分）"""
+    if not student_desc:
+        student_desc = f"小学{grade}学生"
 
     if subject_id == "math":
         exam_structure = """题型结构（满分100分）：
@@ -295,12 +314,12 @@ def _build_exam_prompt(subject_id: str, subject_name: str, grade: str, context_t
 
 【重要约束】禁止出任何需要看图片的题目（如"观察实验图"、"看图回答"等），因为系统无法显示图片"""
 
-    return f"""请为{grade}小学生出一套{subject_name}综合测试卷{kp_text}，模拟正式考试，满分100分。{context_text}
+    return f"""请为{student_desc}出一套{subject_name}综合测试卷{kp_text}，模拟正式考试，满分100分。{context_text}
 
 {exam_structure}
 
 要求：
-1. 题目难度适合小学{grade}学生，符合新课标要求
+1. 题目难度适合{student_desc}，符合新课标要求
 2. 知识点覆盖面广，难度由易到难
 3. 每道题必须有明确的正确答案和对应分值
 4. 题目编号从1开始连续编号

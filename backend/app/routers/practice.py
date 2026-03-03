@@ -13,6 +13,7 @@ from ..database import get_db
 from ..models import PracticeSession, WrongQuestion, LearningRecord, LLMConfig, User
 from ..schemas import PracticeSessionCreate, PracticeSessionOut
 from ..llm_service import call_llm, build_practice_prompt, parse_llm_questions, get_llm_config_with_iflow
+from ..curriculum_data import get_unit_topics, get_semester_all_topics
 
 router = APIRouter()
 
@@ -554,6 +555,18 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
         user = db.query(User).filter(User.id == data.user_id).first()
         grade = user.grade if user else "三年级"
 
+        # 获取课本知识点
+        curriculum_topics = None
+        semester = data.semester
+        unit_name = data.unit
+        if semester:
+            if unit_name:
+                curriculum_topics = get_unit_topics(grade, data.subject_id or "math", semester, unit_name)
+            else:
+                curriculum_topics = get_semester_all_topics(grade, data.subject_id or "math", semester)
+            if curriculum_topics and not auto_knowledge_point:
+                auto_knowledge_point = "、".join(curriculum_topics[:5])
+
         # 查询用户知识库：薄弱知识点 + 错题
         weak_records = (
             db.query(LearningRecord)
@@ -602,6 +615,9 @@ async def generate_practice(data: PracticeSessionCreate, db: Session = Depends(g
             weak_points=weak_points,
             wrong_questions=wrong_qs,
             practice_mode=practice_mode,
+            curriculum_topics=curriculum_topics,
+            semester=semester,
+            unit_name=unit_name,
         )
         # 追加练习模式的额外上下文
         if extra_context_for_prompt:

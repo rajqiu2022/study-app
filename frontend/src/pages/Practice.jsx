@@ -8,7 +8,7 @@ import {
   HistoryOutlined, DeleteOutlined, EyeOutlined, PlayCircleOutlined, PlusOutlined,
   SoundOutlined, LoadingOutlined, FileTextOutlined,
 } from '@ant-design/icons'
-import { generatePractice, submitPractice, abandonPractice, getPracticeSession, getPracticeSessions, getSubjects, getLLMConfig, generateTTS } from '../api'
+import { generatePractice, submitPractice, abandonPractice, getPracticeSession, getPracticeSessions, getSubjects, getLLMConfig, generateTTS, getCurriculum, getCurrentUser } from '../api'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -105,6 +105,9 @@ export default function Practice() {
   const [view, setView] = useState('new') // new / history / practice / result
   const [sessions, setSessions] = useState([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [semester, setSemester] = useState(null) // 上册/下册
+  const [units, setUnits] = useState([]) // 单元列表
+  const [selectedUnit, setSelectedUnit] = useState(null) // 选中的单元
 
   useEffect(() => {
     getSubjects().then((res) => setSubjects(res.data)).catch(() => {})
@@ -112,6 +115,26 @@ export default function Practice() {
       if (res.data && res.data.enabled) setAiEnabled(true)
     }).catch(() => {})
   }, [])
+
+  // 加载课本大纲单元列表
+  useEffect(() => {
+    if (!semester) {
+      setUnits([])
+      setSelectedUnit(null)
+      return
+    }
+    const user = getCurrentUser()
+    const grade = user?.grade || '三年级'
+    getCurriculum(grade, subjectId, semester).then((res) => {
+      const data = res.data
+      const semesterUnits = data[semester] || []
+      setUnits(semesterUnits)
+      setSelectedUnit(null)
+    }).catch(() => {
+      setUnits([])
+      setSelectedUnit(null)
+    })
+  }, [semester, subjectId])
 
   const loadSessions = async () => {
     setSessionsLoading(true)
@@ -138,6 +161,8 @@ export default function Practice() {
         knowledge_point: '',
         total_questions: isExamMode ? 25 : count,
         practice_mode: practiceMode,
+        semester: semester || undefined,
+        unit: selectedUnit || undefined,
       })
       setSession(res.data)
       const qs = JSON.parse(res.data.questions_json)
@@ -430,10 +455,44 @@ export default function Practice() {
             </div>
             <div>
               <Text>学科：</Text>
-              <Select value={subjectId} onChange={setSubjectId} style={{ width: 200, marginLeft: 8 }}>
+              <Select value={subjectId} onChange={(v) => { setSubjectId(v); setSemester(null); setSelectedUnit(null) }} style={{ width: 200, marginLeft: 8 }}>
                 {subjects.map((s) => <Select.Option key={s.id} value={s.id}>{s.icon} {s.name}</Select.Option>)}
               </Select>
             </div>
+            {practiceMode !== 'wrong_review' && practiceMode !== 'important_review' && (
+              <div>
+                <Text>课本范围：</Text>
+                <Select
+                  value={semester}
+                  onChange={(v) => { setSemester(v); setSelectedUnit(null) }}
+                  style={{ width: 120, marginLeft: 8 }}
+                  allowClear
+                  placeholder="不限"
+                >
+                  <Select.Option value="上册">上册</Select.Option>
+                  <Select.Option value="下册">下册</Select.Option>
+                </Select>
+                {semester && units.length > 0 && (
+                  <Select
+                    value={selectedUnit}
+                    onChange={setSelectedUnit}
+                    style={{ width: 280, marginLeft: 8 }}
+                    allowClear
+                    placeholder="全部单元"
+                  >
+                    {units.map((u) => (
+                      <Select.Option key={u.unit} value={u.unit}>{u.unit}</Select.Option>
+                    ))}
+                  </Select>
+                )}
+                {semester && (
+                  <div style={{ marginTop: 6, padding: '6px 12px', background: '#f0f5ff', borderRadius: 8, fontSize: 12, color: '#1677ff' }}>
+                    📖 将按照 {getCurrentUser()?.grade || '三年级'}{semester}
+                    {selectedUnit ? `「${selectedUnit}」` : '全部单元'}的课本内容出题
+                  </div>
+                )}
+              </div>
+            )}
             {!isExamMode && practiceMode !== 'wrong_review' && practiceMode !== 'important_review' && (
               <div>
                 <Text>题目数量：</Text>

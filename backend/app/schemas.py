@@ -139,6 +139,8 @@ class PracticeSessionCreate(BaseModel):
     question_type: Optional[str] = "混合"
     practice_mode: Optional[str] = "custom"  # wrong_review/important_review/custom/exam
     total_questions: Optional[int] = 5
+    semester: Optional[str] = None  # 上册/下册
+    unit: Optional[str] = None  # 单元名称
 
 class PracticeSessionOut(BaseModel):
     id: str

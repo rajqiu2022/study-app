@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
-from .routers import users, subjects, learning_records, wrong_questions, practice, chat, dashboard, ocr, settings, knowledge_graph
+from .routers import users, subjects, learning_records, wrong_questions, practice, chat, dashboard, ocr, settings, knowledge_graph, curriculum
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -50,7 +50,7 @@ def _migrate_db():
 
 _migrate_db()
 
-app = FastAPI(title="小学生学业辅导系统", version="1.0.0")
+app = FastAPI(title="学业辅导系统", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,6 +70,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["仪表盘"]
 app.include_router(ocr.router, prefix="/api/ocr", tags=["图片识别"])
 app.include_router(settings.router, prefix="/api/settings", tags=["系统设置"])
 app.include_router(knowledge_graph.router, prefix="/api/knowledge-graph", tags=["知识图谱"])
+app.include_router(curriculum.router, prefix="/api/curriculum", tags=["课本大纲"])
 
 
 @app.on_event("startup")
@@ -128,4 +129,4 @@ async def startup():
 
 @app.get("/")
 def root():
-    return {"message": "小学生学业辅导系统 API", "version": "1.0.0"}
+    return {"message": "学业辅导系统 API", "version": "1.0.0"}

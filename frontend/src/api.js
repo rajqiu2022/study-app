@@ -110,4 +110,11 @@ export const getImageUrl = (filename) => {
 export const getKnowledgeGraph = (subjectId) =>
   api.get('/knowledge-graph/', { params: { user_id: uid(), subject_id: subjectId || undefined }, timeout: 120000 })
 
+// ---- 课本大纲 ----
+export const getCurriculumGrades = () => api.get('/curriculum/grades')
+export const getCurriculum = (grade, subjectId, semester) =>
+  api.get('/curriculum/', { params: { grade, subject_id: subjectId, semester: semester || undefined } })
+export const getCurriculumTopics = (grade, subjectId, semester, unit) =>
+  api.get('/curriculum/topics', { params: { grade, subject_id: subjectId, semester, unit: unit || undefined } })
+
 export default api
