@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
-from .routers import users, subjects, learning_records, wrong_questions, practice, chat, dashboard, ocr, settings, knowledge_graph, curriculum
+from .routers import users, subjects, learning_records, wrong_questions, practice, chat, dashboard, ocr, settings, knowledge_graph, curriculum, notebooks
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
