@@ -10,8 +10,15 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# 安装 nginx
-RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+# 安装 nginx 和 openssl
+RUN apt-get update && apt-get install -y nginx openssl && rm -rf /var/lib/apt/lists/*
+
+# 生成自签名 SSL 证书
+RUN mkdir -p /etc/nginx/ssl && \
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/key.pem \
+    -out /etc/nginx/ssl/cert.pem \
+    -subj "/C=CN/ST=GD/L=SZ/O=Study/CN=study-app"
 
 # 安装 Python 依赖
 COPY backend/requirements.txt ./
@@ -34,6 +41,6 @@ RUN mkdir -p /app/backend/data /app/backend/uploads
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 80
+EXPOSE 80 443
 
 CMD ["/app/start.sh"]

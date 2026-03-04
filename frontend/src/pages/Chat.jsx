@@ -83,22 +83,40 @@ export default function Chat() {
   }
 
   // 语音识别
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (!speechSupported) {
       message.warning('当前浏览器不支持语音识别，请使用 Chrome 浏览器')
       return
     }
     if (isListening) {
-      // 停止识别
       recognitionRef.current?.stop()
       return
     }
-    // 开始识别
+
+    // 先主动请求麦克风权限（解决 HTTP 下 SpeechRecognition 直接报 not-allowed 的问题）
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 拿到权限后立即释放
+      stream.getTracks().forEach(t => t.stop())
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        message.error('麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
+      } else if (err.name === 'NotFoundError') {
+        message.error('未检测到麦克风设备')
+      } else if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+        message.error('语音功能需要 HTTPS 安全连接，请使用 HTTPS 访问本站')
+      } else {
+        message.error('无法访问麦克风：' + err.message)
+      }
+      return
+    }
+
+    // 麦克风权限已获取，启动语音识别
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'          // 普通话
-    recognition.continuous = true        // 持续识别
-    recognition.interimResults = true    // 显示中间结果
+    recognition.lang = 'zh-CN'
+    recognition.continuous = true
+    recognition.interimResults = true
     recognitionRef.current = recognition
 
     let finalText = ''
@@ -119,9 +137,7 @@ export default function Chat() {
           interim += transcript
         }
       }
-      // 实时更新输入框：已确认文字 + 中间结果
       setInput((prev) => {
-        // 保留用户之前手动输入的内容
         const base = prev.replace(/\[语音识别中.*\]$/, '').replace(/[\s]*$/, '')
         const prefix = base ? base + ' ' : ''
         if (interim) {
@@ -133,7 +149,6 @@ export default function Chat() {
 
     recognition.onend = () => {
       setIsListening(false)
-      // 清理中间结果标记
       setInput((prev) => prev.replace(/\[语音识别中.*?\]/g, '').trim())
       if (finalText) {
         message.success('语音识别完成')
@@ -145,7 +160,15 @@ export default function Chat() {
       if (event.error === 'no-speech') {
         message.warning('未检测到语音，请重试')
       } else if (event.error === 'not-allowed') {
-        message.error('请允许浏览器使用麦克风')
+        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+          message.error('语音识别需要 HTTPS 安全连接，当前为 HTTP 环境')
+        } else {
+          message.error('语音识别权限被拒绝，请刷新页面重试')
+        }
+      } else if (event.error === 'network') {
+        message.error('语音识别网络错误，请检查网络连接')
+      } else if (event.error === 'aborted') {
+        // 用户主动停止，不提示
       } else {
         message.error('语音识别出错：' + event.error)
       }
