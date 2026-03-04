@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Card, Input, Button, Typography, Spin, Upload, Modal, Select, message, Image, Switch, Tooltip } from 'antd'
 import {
   SendOutlined, RobotOutlined, UserOutlined, CameraOutlined,
-  PictureOutlined, CloseOutlined, GlobalOutlined, ReadOutlined,
+  PictureOutlined, CloseOutlined, GlobalOutlined, ReadOutlined, AudioOutlined,
 } from '@ant-design/icons'
 import { sendChat, uploadImage, recognizeAndSave, getImageUrl, getSubjects, createNotebook, getCurrentUserId } from '../api'
 
@@ -18,7 +18,7 @@ export default function Chat() {
   const [messages, setMessages] = useState([
     {
       role: 'bot',
-      content: '你好！我是你的学习小助手 🤖\n\n你可以：\n📚 输入「我今天学了XXX」- 记录学习\n❌ 输入「XX题做错了」- 添加错题\n📓 输入「记笔记」- 创建学习笔记\n🎯 输入「帮我出5道XX题」- 生成练习\n📸 发送图片 - 识别题目并记录\n📊 输入「分析薄弱点」- 查看分析',
+      content: '你好！我是你的学习小助手 🤖\n\n你可以：\n📚 输入「我今天学了XXX」- 记录学习\n❌ 输入「XX题做错了」- 添加错题\n📓 输入「记笔记」- 创建学习笔记\n🎯 输入「帮我出5道XX题」- 生成练习\n📸 发送图片 - 识别题目并记录\n🎤 点击麦克风 - 语音输入（普通话）\n📊 输入「分析薄弱点」- 查看分析',
     },
   ])
   const [input, setInput] = useState('')
@@ -35,6 +35,11 @@ export default function Chat() {
   const [webSearch, setWebSearch] = useState(false)
   const [subjectAutoDetected, setSubjectAutoDetected] = useState(false)
 
+  // 语音识别相关状态
+  const [isListening, setIsListening] = useState(false)
+  const [speechSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
+  const recognitionRef = useRef(null)
+
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -44,6 +49,13 @@ export default function Chat() {
 
   useEffect(() => {
     getSubjects().then((res) => setSubjects(res.data)).catch(() => {})
+  }, [])
+
+  // 组件卸载时停止语音识别
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop()
+    }
   }, [])
 
   const handleSend = async () => {
@@ -68,6 +80,78 @@ export default function Chat() {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  // 语音识别
+  const toggleListening = () => {
+    if (!speechSupported) {
+      message.warning('当前浏览器不支持语音识别，请使用 Chrome 浏览器')
+      return
+    }
+    if (isListening) {
+      // 停止识别
+      recognitionRef.current?.stop()
+      return
+    }
+    // 开始识别
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'zh-CN'          // 普通话
+    recognition.continuous = true        // 持续识别
+    recognition.interimResults = true    // 显示中间结果
+    recognitionRef.current = recognition
+
+    let finalText = ''
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      message.info('🎤 开始语音输入，请说话...')
+    }
+
+    recognition.onresult = (event) => {
+      let interim = ''
+      finalText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalText += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      // 实时更新输入框：已确认文字 + 中间结果
+      setInput((prev) => {
+        // 保留用户之前手动输入的内容
+        const base = prev.replace(/\[语音识别中.*\]$/, '').replace(/[\s]*$/, '')
+        const prefix = base ? base + ' ' : ''
+        if (interim) {
+          return prefix + finalText + '[语音识别中...' + interim + ']'
+        }
+        return prefix + finalText
+      })
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      // 清理中间结果标记
+      setInput((prev) => prev.replace(/\[语音识别中.*?\]/g, '').trim())
+      if (finalText) {
+        message.success('语音识别完成')
+      }
+    }
+
+    recognition.onerror = (event) => {
+      setIsListening(false)
+      if (event.error === 'no-speech') {
+        message.warning('未检测到语音，请重试')
+      } else if (event.error === 'not-allowed') {
+        message.error('请允许浏览器使用麦克风')
+      } else {
+        message.error('语音识别出错：' + event.error)
+      }
+    }
+
+    recognition.start()
   }
 
   // 处理图片选择（拍照或相册）
@@ -275,11 +359,28 @@ export default function Chat() {
           />
         </Upload>
 
+        {/* 语音输入按钮 */}
+        <Tooltip title={isListening ? '点击停止' : (speechSupported ? '语音输入（普通话）' : '浏览器不支持语音识别')}>
+          <Button
+            icon={<AudioOutlined />}
+            shape="circle"
+            size="large"
+            type={isListening ? 'primary' : 'default'}
+            danger={isListening}
+            onClick={toggleListening}
+            disabled={!speechSupported}
+            style={{
+              flexShrink: 0,
+              ...(isListening ? { animation: 'pulse 1.5s infinite' } : {}),
+            }}
+          />
+        </Tooltip>
+
         <Input.TextArea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入文字或拍照发送..."
+          placeholder={isListening ? '🎤 正在听你说话...' : '输入文字、语音或拍照发送...'}
           autoSize={{ minRows: 1, maxRows: 3 }}
           style={{ borderRadius: 12, fontSize: 15 }}
         />

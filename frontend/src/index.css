@@ -28,6 +28,12 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 77, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
+}
+
 /* 卡片悬浮效果 */
 .hover-card { transition: all 0.3s ease; cursor: pointer; }
 .hover-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(99, 102, 241, 0.15); }
