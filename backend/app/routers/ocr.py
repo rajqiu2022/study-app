@@ -17,6 +17,24 @@ router = APIRouter()
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# vosk 语音识别模型（全局单例，延迟加载）
+_vosk_model = None
+
+def get_vosk_model():
+    """获取 vosk 中文语音模型（单例）"""
+    global _vosk_model
+    if _vosk_model is not None:
+        return _vosk_model
+    from vosk import Model
+    model_path = "/app/vosk-model"
+    if not os.path.exists(model_path):
+        model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "vosk-model")
+    if not os.path.exists(model_path):
+        return None
+    _vosk_model = Model(model_path)
+    print(f"[Vosk] 中文语音模型已加载: {model_path}")
+    return _vosk_model
+
 
 async def ai_ocr(image_path: str, llm_config) -> dict:
     """使用 AI 大模型的视觉能力识别图片内容，同时识别学科"""
@@ -275,127 +293,68 @@ async def get_image(filename: str):
 
 @router.post("/speech-to-text")
 async def speech_to_text(file: UploadFile = File(...)):
-    """接收音频文件，使用大模型语音转文字"""
-    import httpx
+    """接收音频文件，使用 vosk 离线语音识别（支持普通话）"""
+    import subprocess
+    import json as _json
+    from vosk import KaldiRecognizer
+    import wave
 
     # 保存音频文件
     ext = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
     file_id = str(uuid.uuid4())[:8]
     filename = f"audio_{file_id}{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
+    wav_path = os.path.join(UPLOAD_DIR, f"audio_{file_id}.wav")
 
     content = await file.read()
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # 获取 LLM 配置
-    from ..database import SessionLocal
-    db = SessionLocal()
     try:
-        llm_config = get_llm_config_with_iflow(db)
-        if not llm_config or not llm_config.api_url or not llm_config.api_key:
-            raise HTTPException(500, "未配置大模型，无法进行语音识别")
+        # 用 ffmpeg 将 webm/ogg 等格式转为 16kHz 单声道 wav
+        cmd = ["ffmpeg", "-y", "-i", filepath, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            print(f"[ffmpeg] 转换失败: {result.stderr.decode(errors='ignore')}")
+            raise HTTPException(500, "音频格式转换失败")
 
-        # 方式1: 尝试 OpenAI Whisper 兼容接口 (/v1/audio/transcriptions)
-        api_base = llm_config.api_url.rstrip("/")
-        # 去掉尾部的 /chat/completions 等路径
-        for suffix in ["/chat/completions", "/completions"]:
-            if api_base.endswith(suffix):
-                api_base = api_base[:-len(suffix)]
-        if not api_base.endswith("/v1"):
-            if "/v1" in api_base:
-                api_base = api_base[:api_base.index("/v1") + 3]
-            else:
-                api_base = api_base + "/v1"
-        whisper_url = api_base + "/audio/transcriptions"
+        # 获取 vosk 模型
+        model = get_vosk_model()
+        if not model:
+            raise HTTPException(500, "语音识别模型未安装")
 
-        headers = {}
-        if llm_config.api_key:
-            headers["Authorization"] = f"Bearer {llm_config.api_key}"
+        rec = KaldiRecognizer(model, 16000)
+        rec.SetWords(True)
 
-        text = ""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                with open(filepath, "rb") as audio_f:
-                    resp = await client.post(
-                        whisper_url,
-                        headers=headers,
-                        files={"file": (filename, audio_f, "audio/webm")},
-                        data={"model": "whisper-1", "language": "zh"},
-                    )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    text = data.get("text", "")
-        except Exception as e:
-            print(f"[Whisper API] 不可用: {e}")
+        # 读取 wav 文件并识别
+        wf = wave.open(wav_path, "rb")
+        all_text = []
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+            if rec.AcceptWaveform(data):
+                part = _json.loads(rec.Result())
+                if part.get("text"):
+                    all_text.append(part["text"])
+        # 获取最后一段
+        final = _json.loads(rec.FinalResult())
+        if final.get("text"):
+            all_text.append(final["text"])
+        wf.close()
 
-        # 方式2: 如果 Whisper 不可用，用音频 base64 + 多模态模型
+        text = "".join(all_text).strip()
         if not text:
-            try:
-                audio_b64 = base64.b64encode(content).decode("utf-8")
-                # 判断 MIME
-                mime_map = {".webm": "audio/webm", ".ogg": "audio/ogg", ".mp3": "audio/mpeg",
-                            ".wav": "audio/wav", ".m4a": "audio/mp4", ".mp4": "audio/mp4"}
-                mime = mime_map.get(ext.lower(), "audio/webm")
-
-                url = llm_config.api_url.rstrip("/")
-                if not url.endswith("/chat/completions"):
-                    if url.endswith("/v1") or url.endswith("/v4"):
-                        url += "/chat/completions"
-                    else:
-                        url += "/v1/chat/completions"
-
-                model = llm_config.model_name
-                # 映射到支持音频的模型
-                if "qwen" in model.lower() and "audio" not in model.lower():
-                    model = "qwen2.5-omni-7b"
-                elif "gpt" in model.lower():
-                    model = "gpt-4o-audio-preview"
-
-                req_headers = {"Content-Type": "application/json"}
-                if llm_config.api_key:
-                    req_headers["Authorization"] = f"Bearer {llm_config.api_key}"
-
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "input_audio",
-                                    "input_audio": {"data": audio_b64, "format": ext.lstrip(".")},
-                                },
-                                {
-                                    "type": "text",
-                                    "text": "请将这段语音内容完整转录为文字，只输出转录文字，不要添加任何标点以外的额外内容。语音是普通话。",
-                                },
-                            ],
-                        }
-                    ],
-                    "max_tokens": 2048,
-                }
-
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    resp = await client.post(url, json=payload, headers=req_headers)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    text = data["choices"][0]["message"]["content"]
-            except Exception as e:
-                print(f"[Audio multimodal] 失败: {e}")
-                traceback.print_exc()
-
-        if not text:
-            raise HTTPException(500, "语音识别失败，当前大模型可能不支持音频识别")
+            raise HTTPException(500, "未能识别出有效内容，请确保说话清晰并重试")
 
         return {"text": text, "filename": filename}
     finally:
-        db.close()
-        # 清理临时音频文件
-        try:
-            os.remove(filepath)
-        except Exception:
-            pass
+        # 清理临时文件
+        for p in [filepath, wav_path]:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 
 SUBJECT_MAP = {"数学": "math", "语文": "chinese", "英语": "english", "科学": "science"}

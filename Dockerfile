@@ -10,19 +10,22 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# 安装 nginx 和 openssl
-RUN apt-get update && apt-get install -y nginx openssl && rm -rf /var/lib/apt/lists/*
+# 安装 nginx、openssl、ffmpeg（语音识别需要）、wget/unzip（下载模型用）
+RUN apt-get update && apt-get install -y nginx openssl ffmpeg wget unzip && rm -rf /var/lib/apt/lists/*
 
-# 生成自签名 SSL 证书
-RUN mkdir -p /etc/nginx/ssl && \
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -keyout /etc/nginx/ssl/key.pem \
-    -out /etc/nginx/ssl/cert.pem \
-    -subj "/C=CN/ST=GD/L=SZ/O=Study/CN=study-app"
+# 创建 SSL 证书目录（实际证书通过 docker volume 挂载）
+RUN mkdir -p /etc/nginx/ssl
 
 # 安装 Python 依赖
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 下载 vosk 中文语音识别模型（约 42MB，离线识别无需外部服务）
+RUN mkdir -p /app/vosk-model && \
+    wget -q https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip -O /tmp/vosk-model.zip && \
+    unzip -q /tmp/vosk-model.zip -d /tmp/ && \
+    mv /tmp/vosk-model-small-cn-0.22/* /app/vosk-model/ && \
+    rm -rf /tmp/vosk-model*
 
 # 复制后端代码
 COPY backend/ ./backend/
