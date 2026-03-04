@@ -273,6 +273,131 @@ async def get_image(filename: str):
     return FileResponse(filepath)
 
 
+@router.post("/speech-to-text")
+async def speech_to_text(file: UploadFile = File(...)):
+    """接收音频文件，使用大模型语音转文字"""
+    import httpx
+
+    # 保存音频文件
+    ext = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+    file_id = str(uuid.uuid4())[:8]
+    filename = f"audio_{file_id}{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    # 获取 LLM 配置
+    from ..database import SessionLocal
+    db = SessionLocal()
+    try:
+        llm_config = get_llm_config_with_iflow(db)
+        if not llm_config or not llm_config.api_url or not llm_config.api_key:
+            raise HTTPException(500, "未配置大模型，无法进行语音识别")
+
+        # 方式1: 尝试 OpenAI Whisper 兼容接口 (/v1/audio/transcriptions)
+        api_base = llm_config.api_url.rstrip("/")
+        # 去掉尾部的 /chat/completions 等路径
+        for suffix in ["/chat/completions", "/completions"]:
+            if api_base.endswith(suffix):
+                api_base = api_base[:-len(suffix)]
+        if not api_base.endswith("/v1"):
+            if "/v1" in api_base:
+                api_base = api_base[:api_base.index("/v1") + 3]
+            else:
+                api_base = api_base + "/v1"
+        whisper_url = api_base + "/audio/transcriptions"
+
+        headers = {}
+        if llm_config.api_key:
+            headers["Authorization"] = f"Bearer {llm_config.api_key}"
+
+        text = ""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                with open(filepath, "rb") as audio_f:
+                    resp = await client.post(
+                        whisper_url,
+                        headers=headers,
+                        files={"file": (filename, audio_f, "audio/webm")},
+                        data={"model": "whisper-1", "language": "zh"},
+                    )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data.get("text", "")
+        except Exception as e:
+            print(f"[Whisper API] 不可用: {e}")
+
+        # 方式2: 如果 Whisper 不可用，用音频 base64 + 多模态模型
+        if not text:
+            try:
+                audio_b64 = base64.b64encode(content).decode("utf-8")
+                # 判断 MIME
+                mime_map = {".webm": "audio/webm", ".ogg": "audio/ogg", ".mp3": "audio/mpeg",
+                            ".wav": "audio/wav", ".m4a": "audio/mp4", ".mp4": "audio/mp4"}
+                mime = mime_map.get(ext.lower(), "audio/webm")
+
+                url = llm_config.api_url.rstrip("/")
+                if not url.endswith("/chat/completions"):
+                    if url.endswith("/v1") or url.endswith("/v4"):
+                        url += "/chat/completions"
+                    else:
+                        url += "/v1/chat/completions"
+
+                model = llm_config.model_name
+                # 映射到支持音频的模型
+                if "qwen" in model.lower() and "audio" not in model.lower():
+                    model = "qwen2.5-omni-7b"
+                elif "gpt" in model.lower():
+                    model = "gpt-4o-audio-preview"
+
+                req_headers = {"Content-Type": "application/json"}
+                if llm_config.api_key:
+                    req_headers["Authorization"] = f"Bearer {llm_config.api_key}"
+
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {"data": audio_b64, "format": ext.lstrip(".")},
+                                },
+                                {
+                                    "type": "text",
+                                    "text": "请将这段语音内容完整转录为文字，只输出转录文字，不要添加任何标点以外的额外内容。语音是普通话。",
+                                },
+                            ],
+                        }
+                    ],
+                    "max_tokens": 2048,
+                }
+
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.post(url, json=payload, headers=req_headers)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    text = data["choices"][0]["message"]["content"]
+            except Exception as e:
+                print(f"[Audio multimodal] 失败: {e}")
+                traceback.print_exc()
+
+        if not text:
+            raise HTTPException(500, "语音识别失败，当前大模型可能不支持音频识别")
+
+        return {"text": text, "filename": filename}
+    finally:
+        db.close()
+        # 清理临时音频文件
+        try:
+            os.remove(filepath)
+        except Exception:
+            pass
+
+
 SUBJECT_MAP = {"数学": "math", "语文": "chinese", "英语": "english", "科学": "science"}
 
 

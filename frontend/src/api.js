@@ -106,6 +106,13 @@ export const getImageUrl = (filename) => {
   return `${base}/ocr/image/${filename}`
 }
 
+// ---- 语音转文字 ----
+export const speechToText = (audioBlob) => {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'recording.webm')
+  return api.post('/ocr/speech-to-text', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+}
+
 // ---- 知识图谱 ----
 export const getKnowledgeGraph = (subjectId) =>
   api.get('/knowledge-graph/', { params: { user_id: uid(), subject_id: subjectId || undefined }, timeout: 120000 })

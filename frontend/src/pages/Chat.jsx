@@ -4,7 +4,7 @@ import {
   SendOutlined, RobotOutlined, UserOutlined, CameraOutlined,
   PictureOutlined, CloseOutlined, GlobalOutlined, ReadOutlined, AudioOutlined,
 } from '@ant-design/icons'
-import { sendChat, uploadImage, recognizeAndSave, getImageUrl, getSubjects, createNotebook, getCurrentUserId } from '../api'
+import { sendChat, uploadImage, recognizeAndSave, getImageUrl, getSubjects, createNotebook, getCurrentUserId, speechToText } from '../api'
 
 const { Title, Text } = Typography
 
@@ -35,10 +35,13 @@ export default function Chat() {
   const [webSearch, setWebSearch] = useState(false)
   const [subjectAutoDetected, setSubjectAutoDetected] = useState(false)
 
-  // 语音识别相关状态
+  // 语音录音相关状态（使用 MediaRecorder，和笔记本一样）
   const [isListening, setIsListening] = useState(false)
-  const [speechSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-  const recognitionRef = useRef(null)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const timerRef = useRef(null)
 
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -51,10 +54,13 @@ export default function Chat() {
     getSubjects().then((res) => setSubjects(res.data)).catch(() => {})
   }, [])
 
-  // 组件卸载时停止语音识别
+  // 组件卸载时停止录音
   useEffect(() => {
     return () => {
-      recognitionRef.current?.stop()
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+      clearInterval(timerRef.current)
     }
   }, [])
 
@@ -82,99 +88,74 @@ export default function Chat() {
     }
   }
 
-  // 语音识别
+  // 语音录音 + 后端转文字
   const toggleListening = async () => {
-    if (!speechSupported) {
-      message.warning('当前浏览器不支持语音识别，请使用 Chrome 浏览器')
-      return
-    }
+    if (transcribing) return
+
     if (isListening) {
-      recognitionRef.current?.stop()
+      // 停止录音
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
       return
     }
 
-    // 先主动请求麦克风权限（解决 HTTP 下 SpeechRecognition 直接报 not-allowed 的问题）
+    // 开始录音
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // 拿到权限后立即释放
-      stream.getTracks().forEach(t => t.stop())
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setIsListening(false)
+        clearInterval(timerRef.current)
+
+        // 将录音发送到后端转文字
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        if (audioBlob.size < 1000) {
+          message.warning('录音时间太短，请重试')
+          return
+        }
+
+        setTranscribing(true)
+        try {
+          const res = await speechToText(audioBlob)
+          const text = res.data.text?.trim()
+          if (text) {
+            setInput((prev) => (prev ? prev + ' ' + text : text))
+            message.success('语音识别完成')
+          } else {
+            message.warning('未识别到有效内容，请重试')
+          }
+        } catch (err) {
+          const errMsg = err?.response?.data?.detail || '语音识别失败'
+          message.error(errMsg)
+        }
+        setTranscribing(false)
+      }
+
+      mediaRecorder.start()
+      setIsListening(true)
+      setRecordingTime(0)
+      timerRef.current = setInterval(() => {
+        setRecordingTime((t) => t + 1)
+      }, 1000)
+      message.info('🎤 开始录音，请说话...')
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        message.error('麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
+        message.error('麦克风权限被拒绝，请在浏览器设置中允许')
       } else if (err.name === 'NotFoundError') {
         message.error('未检测到麦克风设备')
-      } else if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-        message.error('语音功能需要 HTTPS 安全连接，请使用 HTTPS 访问本站')
       } else {
         message.error('无法访问麦克风：' + err.message)
       }
-      return
     }
-
-    // 麦克风权限已获取，启动语音识别
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognitionRef.current = recognition
-
-    let finalText = ''
-
-    recognition.onstart = () => {
-      setIsListening(true)
-      message.info('🎤 开始语音输入，请说话...')
-    }
-
-    recognition.onresult = (event) => {
-      let interim = ''
-      finalText = ''
-      for (let i = 0; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          finalText += transcript
-        } else {
-          interim += transcript
-        }
-      }
-      setInput((prev) => {
-        const base = prev.replace(/\[语音识别中.*\]$/, '').replace(/[\s]*$/, '')
-        const prefix = base ? base + ' ' : ''
-        if (interim) {
-          return prefix + finalText + '[语音识别中...' + interim + ']'
-        }
-        return prefix + finalText
-      })
-    }
-
-    recognition.onend = () => {
-      setIsListening(false)
-      setInput((prev) => prev.replace(/\[语音识别中.*?\]/g, '').trim())
-      if (finalText) {
-        message.success('语音识别完成')
-      }
-    }
-
-    recognition.onerror = (event) => {
-      setIsListening(false)
-      if (event.error === 'no-speech') {
-        message.warning('未检测到语音，请重试')
-      } else if (event.error === 'not-allowed') {
-        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-          message.error('语音识别需要 HTTPS 安全连接，当前为 HTTP 环境')
-        } else {
-          message.error('语音识别权限被拒绝，请刷新页面重试')
-        }
-      } else if (event.error === 'network') {
-        message.error('语音识别网络错误，请检查网络连接')
-      } else if (event.error === 'aborted') {
-        // 用户主动停止，不提示
-      } else {
-        message.error('语音识别出错：' + event.error)
-      }
-    }
-
-    recognition.start()
   }
 
   // 处理图片选择（拍照或相册）
@@ -383,7 +364,7 @@ export default function Chat() {
         </Upload>
 
         {/* 语音输入按钮 */}
-        <Tooltip title={isListening ? '点击停止' : (speechSupported ? '语音输入（普通话）' : '浏览器不支持语音识别')}>
+        <Tooltip title={isListening ? `录音中 ${recordingTime}s，点击停止` : (transcribing ? '正在识别...' : '语音输入（普通话）')}>
           <Button
             icon={<AudioOutlined />}
             shape="circle"
@@ -391,7 +372,7 @@ export default function Chat() {
             type={isListening ? 'primary' : 'default'}
             danger={isListening}
             onClick={toggleListening}
-            disabled={!speechSupported}
+            loading={transcribing}
             style={{
               flexShrink: 0,
               ...(isListening ? { animation: 'pulse 1.5s infinite' } : {}),
@@ -403,7 +384,7 @@ export default function Chat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isListening ? '🎤 正在听你说话...' : '输入文字、语音或拍照发送...'}
+          placeholder={isListening ? `🎤 录音中 ${recordingTime}s...点击麦克风停止` : (transcribing ? '⏳ 语音识别中，请稍候...' : '输入文字、语音或拍照发送...')}
           autoSize={{ minRows: 1, maxRows: 3 }}
           style={{ borderRadius: 12, fontSize: 15 }}
         />
